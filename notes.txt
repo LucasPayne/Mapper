@@ -1,0 +1,13 @@
+
+
+3D application framework.
+    OpenGL window, shader compilation utilities, etc.
+    Separate these out from cg_sandbox.
+
+Could use pbrt as a ray-tracer and for scene-description.
+
+OpenCV
+
+glfw submodule
+
+imgui
