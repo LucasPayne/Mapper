@@ -6,6 +6,8 @@
 !src
 !src/CMakeLists.txt
 !src/MapperViewer_main.cpp
+!models
+!/models/**/*
 # submodules
 !lib_cg_sandbox
 !glm
