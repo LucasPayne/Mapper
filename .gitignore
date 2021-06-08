@@ -6,3 +6,7 @@
 !src
 !src/CMakeLists.txt
 !src/MapperViewer_main.cpp
+# submodules
+!lib_cg_sandbox
+!glm
+!glfw
