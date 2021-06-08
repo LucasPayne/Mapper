@@ -168,11 +168,30 @@ Entity create_cameraman(World &world)
 
 struct Mesh : public IBehaviour {
     SurfaceGeometry *geom;
+    Image<vec4> img;
+    GLuint img_tex;
+
     Mesh(SurfaceGeometry *_geom) : geom{_geom}
     {
+        cv::Mat cv_img = cv::imread("images/test.png", -1);
+        assert(!img.empty());
+
+        img = Image<vec4>(cv_img.rows, cv_img.cols);
+        for (int i = 0; i < cv_img.rows; i++) {
+            for (int j = 0; j < cv_img.cols; j++) {
+                auto rgb = cv_img.at<cv::Vec3b>(i, j);
+                img(cv_img.rows-1-i,j) = vec4(rgb[0]/256.f, rgb[1]/256.f, rgb[2]/256.f, 1);
+            }
+        }
+        // img(2,2) = vec4(1,0,0,1);
+        // img(4,4) = vec4(0,1,0,1);
+        img_tex = img.texture();
     }
     void update() {
         world->graphics.paint.wireframe(*geom, mat4x4::identity(), 0.001);
+        world->graphics.paint.image_3D(img_tex, vec3::zero(), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+        world->graphics.paint.image_3D(img_tex, vec3(0, 5, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+        world->graphics.paint.image_3D(img_tex, vec3(5, 0, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
     }
 };
 
@@ -218,6 +237,14 @@ App::App(World &_world) : world{_world}
     }
     Entity e = world.entities.add();
     auto mesh = world.add<Mesh>(e, model_geom);
+
+
+    // cv::Mat img = cv::imread("images/test.png", -1);
+    // assert(!img.empty());
+    // cv::namedWindow("ExampleWindow", cv::WINDOW_AUTOSIZE);
+    // cv::imshow("Example1", img);
+    // cv::waitKey(0);
+    // cv::destroyWindow("Example1");
 }
 
 void App::close()
