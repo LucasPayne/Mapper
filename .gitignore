@@ -3,5 +3,6 @@
 !.gitignore
 !CMakeLists.txt
 !notes.txt
+!src
 !src/CMakeLists.txt
 !src/MapperViewer_main.cpp
