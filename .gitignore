@@ -1,8 +1,7 @@
 *
-*/
 # Include files.
 !.gitignore
 !CMakeLists.txt
 !notes.txt
 !src/CMakeLists.txt
-!src/MapperViewer_main.txt
+!src/MapperViewer_main.cpp
