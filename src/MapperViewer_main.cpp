@@ -1,6 +1,8 @@
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <math.h>
 #include <opencv2/opencv.hpp>
 #include "glm/glm.hpp"
@@ -10,6 +12,16 @@
 
 // Globals
 Aspect<Camera> main_camera;
+struct FrameMetadata {
+    // 1341847980.790000 -0.6832 2.6909 1.7373 0.0003 0.8617 -0.5072 -0.0145 1341847980.786879 depth/1341847980.786879.png 1341847980.786856 rgb/1341847980.786856.png
+    vec3 position;
+    vec3 rotation;
+    double t;
+    std::string depth_file;
+    std::string rgb_file;
+};
+std::vector<FrameMetadata> frame_metadata;
+
 
 // Mesh loading.
 Entity create_mesh_object(World &world,
@@ -188,10 +200,18 @@ struct Mesh : public IBehaviour {
         img_tex = img.texture();
     }
     void update() {
-        world->graphics.paint.wireframe(*geom, mat4x4::identity(), 0.001);
-        world->graphics.paint.image_3D(img_tex, vec3::zero(), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
-        world->graphics.paint.image_3D(img_tex, vec3(0, 5, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
-        world->graphics.paint.image_3D(img_tex, vec3(5, 0, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+        auto &paint = world->graphics.paint;
+        paint.wireframe(*geom, mat4x4::identity(), 0.001);
+        paint.image_3D(img_tex, vec3::zero(), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+        paint.image_3D(img_tex, vec3(0, 5, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+        paint.image_3D(img_tex, vec3(5, 0, 0), vec3(0,1,0), vec3(sin(total_time),0,cos(total_time)), 3, 3);
+
+
+        std::vector<vec3> positions;
+        for (auto md : frame_metadata) {
+            positions.push_back(md.position);
+        }
+        paint.chain(positions, 10, vec4(0,0,0,1));
     }
 };
 
@@ -237,6 +257,42 @@ App::App(World &_world) : world{_world}
     }
     Entity e = world.entities.add();
     auto mesh = world.add<Mesh>(e, model_geom);
+
+
+    FILE *file = fopen("data/rgbd_tum/associate.txt", "r");
+    assert(file != NULL);
+    char line[1024];
+    while (fgets(line, 1024, file)) {
+        float t;
+        float x1, y1, z1;
+        float w;
+        float x2, y2, z2;
+        float depth_time;
+        char depth_filename[1024];
+        float rgb_time;
+        char rgb_filename[1024];
+        
+// 1341847980.790000 -0.6832 2.6909 1.7373 0.0003 0.8617 -0.5072 -0.0145 1341847980.786879 depth/1341847980.786879.png 1341847980.786856 rgb/1341847980.786856.png
+        size_t num_matched = sscanf(line, "%f %f %f %f %f %f %f %f %f %s %f %s",
+            &t, &x1, &y1, &y2, &w, &x2, &y2, &z2, &depth_time, depth_filename, &rgb_time, &rgb_filename
+        );
+        assert(num_matched == 12);
+
+        FrameMetadata md;
+        md.position = vec3(x1, y1, z1);
+        md.rotation = vec3(x2, y2, z2);
+        md.t = t;
+        md.depth_file = std::string(depth_filename);
+        md.rgb_file = std::string(rgb_filename);
+        frame_metadata.push_back(md);
+
+        std::cout << "Loaded frame metadata" << "\n";
+        std::cout << "    " << md.position << ", " << md.rotation << "\n";
+        std::cout << "    " << md.depth_file << "\n";
+        std::cout << "    " << md.rgb_file << "\n";
+        // getchar();
+    }
+    fclose(file);
 
 
     // cv::Mat img = cv::imread("images/test.png", -1);
