@@ -22,6 +22,7 @@ struct CameraIntrinsics {
     int pixels_x;
     int pixels_y;
     double depth_scale;
+    double short_depth_scale;
     mat3x3 intrinsic_matrix;
     mat3x3 intrinsic_matrix_inverse;
 } intrinsics;
@@ -38,7 +39,7 @@ struct FrameMetadata {
     GLuint rgb_tex;
     GLuint depth_tex;
     Image<vec4> rgb_image;
-    Image<vec4> depth_image;
+    Image<float> depth_image;
 
     mat3x3 rotation; // extrinsic_matrix is [R|t]
     mat4x4 extrinsic_matrix;
@@ -191,26 +192,26 @@ Image<vec4> cv_matrix_to_image_rgba(cv::Mat &cv_img)
     }
     return img;
 }
-Image<vec4> depth_to_distance_image(cv::Mat &cv_img)
+Image<float> depth_to_distance_image(cv::Mat &cv_img)
 {
-    auto img = Image<vec4>(cv_img.rows, cv_img.cols);
+    auto img = Image<float>(cv_img.rows, cv_img.cols);
     for (int i = 0; i < cv_img.rows; i++) {
         for (int j = 0; j < cv_img.cols; j++) {
             auto color = cv_img.at<unsigned short>(i, j);
-            float scaled = color / intrinsics.depth_scale;
-            img(i,j) = vec4(scaled, scaled, scaled, 1);
+            float scaled = color / intrinsics.short_depth_scale;
+            img(i,j) = scaled;
         }
     }
     return img;
 }
-Image<vec4> depth_to_image(cv::Mat &cv_img)
+Image<float> depth_to_image(cv::Mat &cv_img)
 {
-    auto img = Image<vec4>(cv_img.rows, cv_img.cols);
+    auto img = Image<float>(cv_img.rows, cv_img.cols);
     for (int i = 0; i < cv_img.rows; i++) {
         for (int j = 0; j < cv_img.cols; j++) {
             auto color = cv_img.at<unsigned short>(i, j);
             float scaled = color * 1.f/(2 << 16);
-            img(cv_img.rows-1-i,j) = vec4(scaled, scaled, scaled, 1);
+            img(i,j) = scaled;
         }
     }
     return img;
@@ -220,24 +221,117 @@ Image<vec4> depth_to_image(cv::Mat &cv_img)
 
 
 struct Mesh : public IBehaviour {
-    int frame_number;
+    int frame_A;
+    int frame_B;
+
+    GLShaderProgram depth_map_shader;
+    GLuint depth_map_dummy_vao;
+    GLuint depth_map_dummy_vbo;
+
+    bool draw_point_clouds;
+    bool draw_depth_maps;
 
     Mesh() {
-        frame_number = 0;
+        frame_A = 0;
+        frame_B = 0;
+        draw_point_clouds = false;
+        draw_depth_maps = true;
+
+        depth_map_shader = GLShaderProgram();
+        depth_map_shader.add_shader(GLShader(VertexShader, "mapper_shaders/depth_map.vert"));
+        depth_map_shader.add_shader(GLShader(TessControlShader, "mapper_shaders/depth_map.tcs"));
+        depth_map_shader.add_shader(GLShader(TessEvaluationShader, "mapper_shaders/depth_map.tes"));
+        depth_map_shader.add_shader(GLShader(FragmentShader, "mapper_shaders/depth_map.frag"));
+        depth_map_shader.link();
+
+        GLuint vao;
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        GLuint vbo;
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        vec3 dummy_data = vec3::zero();
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vec3), (const void *) &dummy_data, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (const void *) 0);
+        glEnableVertexAttribArray(0);
+
+        depth_map_dummy_vao = vao;
+        depth_map_dummy_vbo = vbo;
     }
     void keyboard_handler(KeyboardEvent e) {
         if (e.action == KEYBOARD_PRESS) {
             if (e.key.code == KEY_M) {
-                frame_number = (frame_number + 1) % frame_metadata.size();
+                frame_A = (frame_A + 1) % frame_metadata.size();
             }
             if (e.key.code == KEY_N) {
-                frame_number -= 1;
-                if (frame_number < 0) frame_number = frame_metadata.size()-1;
+                frame_A -= 1;
+                if (frame_A < 0) frame_A = frame_metadata.size()-1;
             }
             if (e.key.code == KEY_V) {
                 view_depth = !view_depth;
             }
+            if (e.key.code == KEY_O) { // select frame B
+                frame_B = frame_A;
+            }
+            if (e.key.code == KEY_P) {
+                draw_point_clouds = !draw_point_clouds;
+            }
+            if (e.key.code == KEY_I) {
+                draw_depth_maps = !draw_depth_maps;
+            }
         }
+    }
+
+    void draw_point_cloud_frame(int frame_index, int Nx, int Ny, float sphere_size=0.01) {
+        auto &md = frame_metadata[frame_index];
+        for (int i = 0; i < Ny; i++) {
+            for (int j = 0; j < Nx; j++) {
+                float u = i*1.f/(Ny-1);
+                float v = j*1.f/(Nx-1);
+                int row = int(u*intrinsics.pixels_y);
+                int col = int(v*intrinsics.pixels_x);
+                float z = md.depth_image(row, col);
+                if (z < 1e-5) continue;
+                vec3 p = frame_to_world(md, vec3(v,u,z));
+                vec4 color = vec4(md.rgb_image(row, col).xyz(), 1);
+                world->graphics.paint.sphere(p, sphere_size, color);
+            }
+        }
+    }
+
+    void draw_depth_map(int frame_index) {
+        auto &md = frame_metadata[frame_index];
+
+        auto &program = depth_map_shader;
+        program.bind();
+        glUniform1i(program.uniform_location("rgb_image"), 0);
+        glUniform1i(program.uniform_location("depth_image"), 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, md.rgb_tex);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, md.depth_tex);
+        auto vp_matrix = main_camera->view_projection_matrix();
+        glUniformMatrix4fv(program.uniform_location("vp_matrix"), 1, GL_FALSE, (const GLfloat *) &vp_matrix);
+
+        // std::cout << program.uniform_location("center") << "\n"; getchar();
+        glUniform1i(program.uniform_location("N"), 100); //tessellation
+        glUniform3fv(program.uniform_location("center"), 1, (const GLfloat *) &md.world_position);
+        glUniformMatrix3fv(program.uniform_location("rotation"), 1, GL_FALSE, (const GLfloat *) &md.rotation);
+        glUniform1i(program.uniform_location("pixels_x"), intrinsics.pixels_x);
+        glUniform1i(program.uniform_location("pixels_y"), intrinsics.pixels_y);
+        glUniform1f(program.uniform_location("fx"), intrinsics.fx);
+        glUniform1f(program.uniform_location("fy"), intrinsics.fy);
+        glUniform1f(program.uniform_location("cx"), intrinsics.cx);
+        glUniform1f(program.uniform_location("cy"), intrinsics.cy);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glPatchParameteri(GL_PATCH_VERTICES, 1);
+        glBindVertexArray(depth_map_dummy_vao);
+        glDrawArrays(GL_PATCHES, 0, 1);
+
+        glBindVertexArray(0);
+        program.unbind();
     }
 
     void update() {
@@ -251,75 +345,47 @@ struct Mesh : public IBehaviour {
         }
         paint.chain(positions, 10, vec4(0,0,0,1));
 
-        int Nx = 60;
-        int Ny = 60;
-        float sphere_size = 0.01;
-        for (int K = 0; K <= frame_number; K++) {
-            auto &md = frame_metadata[K];
-            for (int i = 0; i < Ny; i++) {
-                for (int j = 0; j < Nx; j++) {
-                    float u = i*1.f/(Ny-1);
-                    float v = j*1.f/(Nx-1);
-                    int row = int(u*intrinsics.pixels_y);
-                    int col = int(v*intrinsics.pixels_x);
-                    float z = md.depth_image(row, col).x();
-                    if (z < 1e-5) continue;
-                    vec3 p = frame_to_world(md, vec3(v,u,z));
-                    // float dist = (frame_metadata[frame_number].rotation.transpose() * (p - frame_metadata[frame_number].position)).z();
-                    // float gray = exp(-dist*0.5);
-                    vec4 color = vec4(md.rgb_image(row, col).xyz(), 1);
-                    paint.sphere(p, sphere_size, color);
-                }
-            }
-        }
-
-        {
-            auto md = frame_metadata[frame_number];
+        #if 1
+        int frustum_frame_indices[2] = {frame_A, frame_B};
+        vec4 frustum_colors[2] = {vec4(1,0,0,1), vec4(0,0,1,1)};
+        for (int i = 0; i < 2; i++) {
+            auto md = frame_metadata[frustum_frame_indices[i]];
             vec3 up = md.rotation * vec3(0,1,0);
             vec3 right = md.rotation * vec3(1,0,0);
 
-            float Z = 1;
+            float Z = 0.33;
             vec3 bl = intrinsic_point(0,0, Z);
             vec3 tr = intrinsic_point(1,1, Z);
             float w = tr.x() - bl.x();
             float h = tr.y() - bl.y();
 
             vec3 world_bl = frame_to_world(md, vec3(0,0,Z));
-            paint.image_3D(view_depth ? md.depth_tex : md.rgb_tex, world_bl, up, right, w, h);
-    // // DEBUG comparison with fastfusion
-    // for (auto md : frame_metadata) {
-        // std::cout << md.extrinsic_matrix << "\n";
-        // std::cout << md.rotation << "\n";
-        // std::cout << md.world_position << "\n";
-        // getchar();
-        std::cout << md.world_position << "\n";
-        std::cout << intrinsic_point(0,0,1) << "\n";
-        std::cout << md.rotation * intrinsic_point(0,0,1) << "\n";
-    
-        
-      //  getchar();
-    // }
-        vec3 p, q;
-        p = intrinsic_point(0,0,1);
-        q = md.rotation * p;
-        paint.line(md.world_position, md.world_position + q, 5, vec4(0,0,1,1));
-        p = intrinsic_point(1,0,1);
-        q = md.rotation * p;
-        paint.line(md.world_position, md.world_position + q, 5, vec4(0,0,1,1));
-        p = intrinsic_point(1,1,1);
-        q = md.rotation * p;
-        paint.line(md.world_position, md.world_position + q, 5, vec4(0,0,1,1));
-        p = intrinsic_point(0,1,1);
-        q = md.rotation * p;
-        paint.line(md.world_position, md.world_position + q, 5, vec4(0,0,1,1));
+            paint.image_3D(view_depth ? md.depth_tex : md.rgb_tex, world_bl, up, right, w, h, 1);
 
-            // paint.line(md.world_position, world_bl, 5, vec4(0,0,1,1));
-            // paint.line(md.world_position, world_bl + w*right, 5, vec4(0,0,1,1));
-            // paint.line(md.world_position, world_bl + h*up, 5, vec4(0,0,1,1));
-            // paint.line(md.world_position, world_bl + w*right + h*up, 5, vec4(0,0,1,1));
+            if (draw_point_clouds) draw_point_cloud_frame(frustum_frame_indices[i], 100, 100);
+
+            vec3 p, q;
+            p = intrinsic_point(0,0,Z);
+            q = md.rotation * p;
+            vec4 color = frustum_colors[i];
+            paint.line(md.world_position, md.world_position + q, 5, color);
+            p = intrinsic_point(1,0,Z);
+            q = md.rotation * p;
+            paint.line(md.world_position, md.world_position + q, 5, color);
+            p = intrinsic_point(1,1,Z);
+            q = md.rotation * p;
+            paint.line(md.world_position, md.world_position + q, 5, color);
+            p = intrinsic_point(0,1,Z);
+            q = md.rotation * p;
+            paint.line(md.world_position, md.world_position + q, 5, color);
         }
-
-
+        #endif
+    }
+    void post_render_update() {
+        if (draw_depth_maps) {
+            draw_depth_map(frame_A);
+            draw_depth_map(frame_B);
+        }
     }
 };
 
@@ -355,7 +421,8 @@ App::App(World &_world) : world{_world}
     intrinsics.cy = 247.6;
     intrinsics.pixels_x = 640;
     intrinsics.pixels_y = 480;
-    intrinsics.depth_scale = 5000;
+    intrinsics.short_depth_scale = 5000;
+    intrinsics.depth_scale = intrinsics.short_depth_scale * 1.f/(2 << 16);
     intrinsics.intrinsic_matrix = mat3x3(intrinsics.fx,0,0, 0,intrinsics.fy,0, intrinsics.cx,intrinsics.cy,1);
     auto tmp = mat4x4(vec3(0), intrinsics.intrinsic_matrix).inverse(); //---need mat3x3 inverse...
     for (int i = 0; i < 3; i++) {
@@ -452,8 +519,8 @@ App::App(World &_world) : world{_world}
             cv::Mat cv_img = cv::imread(name, -1);
             assert(!cv_img.empty());
             auto img = depth_to_distance_image(cv_img);
-            md.depth_tex = depth_to_image(cv_img).texture();
             md.depth_image = img;
+            md.depth_tex = depth_to_image(cv_img).texture(); // normalized to 0...1
         }
     }
 }
