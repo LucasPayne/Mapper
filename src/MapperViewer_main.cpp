@@ -65,7 +65,18 @@ vec3 frame_to_world(const FrameMetadata &md, vec3 uvz)
     //---I think fastfusion uses an incorrect notion of the extrinsic matrix...
     return md.world_position + md.rotation * intrinsic_point(uvz.x(), uvz.y(), uvz.z());
 }
-
+vec3 world_to_frame(const FrameMetadata &md, vec3 p)
+{
+    vec3 q = md.rotation.transpose() * (p - md.world_position);
+    float u = (intrinsics.fx*q.x()/q.z() + intrinsics.cx)/(intrinsics.pixels_x - 1);
+    float v = (intrinsics.fy*q.y()/q.z() + intrinsics.cy)/(intrinsics.pixels_y - 1);
+    return vec3(u, v, q.z());
+}
+vec3 reproject(const FrameMetadata &from_md, const FrameMetadata &to_md, vec3 uvz)
+{
+    vec3 p = frame_to_world(from_md, uvz);
+    return world_to_frame(to_md, p);
+}
 
 
 
@@ -122,17 +133,22 @@ struct Scene : public IBehaviour {
     bool draw_depth_maps;
 
     Image<float> computed_depth_map;
-    Image<float> computed_depth_map_scaled;
+    Image<float> computed_depth_map_scratch;
     GLuint computed_depth_map_texture;
+    Image<vec4> reprojection_image;
+    GLuint reprojection_texture;
 
     void update_computed_depth_map() {
         glDeleteTextures(1, &computed_depth_map_texture);
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
-                computed_depth_map_scaled(i, j) = computed_depth_map(i, j) * (5000.f/(2<<16));
+                computed_depth_map_scratch(i, j) = computed_depth_map(i, j) * (5000.f/(2<<16));
             }
         }
-        computed_depth_map_texture = computed_depth_map_scaled.texture();
+        computed_depth_map_texture = computed_depth_map_scratch.texture();
+
+        glDeleteTextures(1, &reprojection_texture);
+        reprojection_texture = reprojection_image.texture();
     }
 
     Scene() {
@@ -140,13 +156,15 @@ struct Scene : public IBehaviour {
 
         computed_depth_map_texture = 0;
         computed_depth_map = Image<float>(640, 480); //---hardcoded size
-        computed_depth_map_scaled = Image<float>(640, 480);
+        computed_depth_map_scratch = Image<float>(640, 480); // processing buffer
         computed_depth_map.clear(1.f);
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
-                computed_depth_map(i, j) = 3.f + sin(i/200.f) + cos(j/250.f);
+                // computed_depth_map(i, j) = 3.f + sin(i/200.f) + cos(j/250.f);
+                computed_depth_map(i, j) = 5+3*frand();
             }
         }
+        reprojection_image = Image<vec4>(640, 480);
         update_computed_depth_map();
 
         frame_A = 0;
@@ -221,6 +239,24 @@ struct Scene : public IBehaviour {
         }
     }
 
+    void compute_reprojection() {
+        for (int i = 0; i < computed_depth_map.height(); i++) {
+            for (int j = 0; j < computed_depth_map.width(); j++) {
+                float u = (i+0.5f)*1.f/(computed_depth_map.height()-1);
+                float v = (j+0.5f)*1.f/(computed_depth_map.width()-1);
+                float Z = computed_depth_map(i, j);
+                vec3 uvz_b = reproject(frame_metadata[frame_A], frame_metadata[frame_B], vec3(v, u, Z));
+                // vec4 reproj_color = frame_metadata[frame_B].rgb_image.bilinear(uvz_b.x(), uvz_b.y());
+                
+                int r_i = int(uvz_b.x() * (reprojection_image.height()-1));
+                int r_j = int(uvz_b.y() * (reprojection_image.width()-1));
+                vec4 reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
+                
+                reprojection_image(i, j) = reproj_color;
+            }
+        }
+    }
+
     void draw_depth_map(int frame_index, int use_depth_texture=0, float depth_scale=1.f) {
         // If use_depth_texture is not zero, the depth texture is replaced.
         //
@@ -238,7 +274,7 @@ struct Scene : public IBehaviour {
         glUniformMatrix4fv(program.uniform_location("vp_matrix"), 1, GL_FALSE, (const GLfloat *) &vp_matrix);
 
         // std::cout << program.uniform_location("center") << "\n"; getchar();
-        glUniform1i(program.uniform_location("N"), 100); //tessellation
+        glUniform1i(program.uniform_location("N"), 1000); //tessellation
         glUniform3fv(program.uniform_location("center"), 1, (const GLfloat *) &md.world_position);
         glUniformMatrix3fv(program.uniform_location("rotation"), 1, GL_FALSE, (const GLfloat *) &md.rotation);
         glUniform1i(program.uniform_location("pixels_x"), intrinsics.pixels_x);
@@ -305,6 +341,19 @@ struct Scene : public IBehaviour {
             paint.line(md.world_position, md.world_position + q, 5, color);
         }
         if (!ground_truth && draw_point_clouds) draw_point_cloud_frame(frame_A, 100, 100, &computed_depth_map);
+
+        compute_reprojection();
+        paint.sprite(frame_metadata[frame_A].rgb_tex, vec2(0,0.2), 0.2, -0.2);
+        paint.sprite(frame_metadata[frame_B].rgb_tex, vec2(0.2,0.2), 0.2, -0.2);
+        if (ground_truth) {
+            paint.depth_sprite(frame_metadata[frame_A].depth_tex, vec2(0,0.4), 0.2, -0.2);
+            paint.depth_sprite(frame_metadata[frame_B].depth_tex, vec2(0.2,0.4), 0.2, -0.2);
+        } else {
+            paint.depth_sprite(computed_depth_map_texture, vec2(0,0.4), 0.2, -0.2);
+        }
+        if (!ground_truth) {
+            paint.sprite(reprojection_texture, vec2(0.2,0.4), 0.2, -0.2);
+        }
 
         #endif
     }
