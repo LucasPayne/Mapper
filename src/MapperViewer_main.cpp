@@ -134,6 +134,7 @@ struct Scene : public IBehaviour {
 
     Image<float> computed_depth_map;
     Image<float> computed_depth_map_scratch;
+    Image<float> computed_depth_map_scratch_2;
     GLuint computed_depth_map_texture;
     Image<vec4> reprojection_image;
     GLuint reprojection_texture;
@@ -174,8 +175,8 @@ struct Scene : public IBehaviour {
                     }
                     vec4 reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
                     float penalty = c1*(z - z0)*(z - z0);
-                    return lambda * diff(reproj_color, color);
-                    // return lambda * diff(reproj_color, color) + penalty;
+                    // return lambda * diff(reproj_color, color);
+                    return lambda * diff(reproj_color, color) + penalty;
                 };
                 //--brute force
                 float min_f = INFINITY;
@@ -191,7 +192,46 @@ struct Scene : public IBehaviour {
                         min_z = z;
                     }
                 }
-                computed_depth_map(i, j) = min_z != INFINITY ? min_z : 0.f;
+                depth(i, j) = min_z != INFINITY ? min_z : 0.f;
+            }
+        }
+
+        float tau = 0.05;
+
+        auto &p0 = computed_depth_map_scratch;
+        auto &p1 = computed_depth_map_scratch_2;
+        // Regularize.
+        int num_iterations = 50;
+        float inv_theta = 1.f/theta;
+        // divergence
+        auto div = [&](int i, int j) {
+	    return 0.5*480*(p0(i+1,j)-p0(i-1,j)) + 0.5*640*(p1(i,j+1)-p1(i,j+1));
+        };
+        for (int K = 0; K < num_iterations; K++) {
+            p0.clear(0.f);
+            p1.clear(0.f);
+            for (int i = 2; i < 480-2; i++) {
+                for (int j = 2; j < 640-2; j++) {
+                    float dy = 0.5*480*((div(i+1,j+0)-depth(i+1,j)*inv_theta - (div(i-1,j+0)-depth(i-1,j)*inv_theta)));
+                    float dx = 0.5*640*((div(i+0,j+1)-depth(i,j+1)*inv_theta - (div(i+0,j-1)-depth(i,j-1)*inv_theta)));
+                    float r = sqrt(dx*dx + dy*dy);
+
+                    p0(i,j) = (p0(i,j) + tau*dy) / (1 + tau*r);
+                    p1(i,j) = (p1(i,j) + tau*dx) / (1 + tau*r);
+            //---reference: pytvmin, https://github.com/gokhangg/pyTVmin
+            //     midP = self.__divergence(p) - self.__inputImage/self.__lamb
+            //     psi=np.array(self.__gradient(midP))
+            //     r = self.__getSquareSum(psi)
+            //     p = (p + self.__to*psi)/(1 + self.__to*r)
+            //     self.__resultImage=(self.__inputImage - self.__divergence(p)*self.__lamb)
+
+                }
+            }
+            for (int i = 2; i < 480-2; i++) {
+                for (int j = 2; j < 640-2; j++) {
+                    float divp = div(i, j);
+                    depth(i, j) = depth(i, j) - theta*divp;
+                }
             }
         }
     }
@@ -252,7 +292,7 @@ struct Scene : public IBehaviour {
     }
 
     Scene() {
-        lambda = 1000.f;
+        lambda = 2000.f;
         theta = 0.00025f;
         ground_truth = true;
 
@@ -260,6 +300,7 @@ struct Scene : public IBehaviour {
         computed_depth_map_texture = 0;
         computed_depth_map = Image<float>(480, 640); //---hardcoded size
         computed_depth_map_scratch = Image<float>(480, 640); // processing buffer
+        computed_depth_map_scratch_2 = Image<float>(480, 640); // processing buffer
         computed_depth_map.clear(2);
         reprojection_texture = 0;
         reprojection_image = Image<vec4>(480, 640);

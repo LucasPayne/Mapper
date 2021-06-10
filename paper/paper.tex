@@ -80,7 +80,7 @@ equations of the cost functional. See their classic paper \ref{rof} for details,
 Fundamentally, dense variational methods such as \eqref{horn_schunck}, \eqref{dense_geometry} follow these same lines. First,
 a cost functional of a image with continuous domain is formulated, penalizing unwanted properties of the solution. This cost functional is discretized,
 and the algorithm outputs a discrete function (such as a denoised image, or a depth map, or an optical flow field) which minimizes the discrete cost function.
-The majority of complexity is in the method used to minimize (or attempt to minimize) this cost function, which could be highly non-linear.
+The majority of the complexity is in the method used to minimize (or attempt to minimize) this cost function, which could be highly non-linear.
 See the TUM lecture series by Cremers \ref{variational_lectures}, freely available online, for more discussion.
 
 
@@ -168,7 +168,29 @@ from the bottom right:
     \item The depth map.
 \end{itemize}
 Figure \ref{noisevis_computed} displays the same results when using a depth map computed with the naive brute-force algorithm outlined above.
-The ground truth reprojection image contains ``coloured shadows'' where the reprojection
+
+The ground truth reprojection image contains ``coloured shadows'' due to occlusion. These also contribute
+to high (white) values in the reprojection error image. The brute-force depth map avoids this occlusion problem.
+
+Consider a pixel in frame 1 corresponding a point which, from the perspective of camera 2, is behind the blue die.
+Likely, the line search in frame 2 will find
+an unoccluded point, of similar colour, on the table. This, however, gives an unrealistic (and noisy) depth value in general --- compare
+the depth images in figures \ref{noisevis_groundtruth} and \ref{noisevis_computed}. Clearly we would like to favour the depth map in
+\eqref{noisevis_groundtruth}, and this is exactly the reason for the (denoising) regularizing term in \eqref{rof_continuous}.
+
+Due to the freedom of the line search, the brute-force method has achieved low reprojection error (bottom right of figure \ref{noisevis_computed}).
+With the ground truth depth map, however, the self-occlusion causes a large amount of reprojection error, which will penalize the cost function
+\eqref{rof_continuous}. We would clearly like to minimize the total reprojection error (with the data term), but also keep the depth map ``smooth'' (with the regularizer term), as achieved in \ref{dense_geometry}.
+However, it is difficult to choose a good value of $\lambda$ to balance the data and regularizer.
+
+We propose a modification to the method of \ref{dense_geometry}, by removing the 
+
+
+
+
+
+
+
 
 
 \section{Comparison of results}

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.18 (TeX Live 2017/Debian) (preloaded format=pdflatex 2021.5.4)  11 JUN 2021 00:48
+This is pdfTeX, Version 3.14159265-2.6-1.40.18 (TeX Live 2017/Debian) (preloaded format=pdflatex 2021.5.4)  11 JUN 2021 01:27
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -598,6 +598,15 @@ Overfull \hbox (6.0pt too wide) in paragraph at lines 145--155
 LaTeX Warning: Reference `tum_dataset' on page 2 undefined on input line 162.
 
 
+LaTeX Warning: Reference `dense_geometry' on page 2 undefined on input line 183
+.
+
+
+LaTeX Warning: Reference `dense_geometry' on page 2 undefined on input line 186
+.
+
+[2 <./figures/noisevis_groundtruth.png> <./figures/noisevis_computed.png>]
+
 ** Conference Paper **
 Before submitting the final camera ready copy, remember to:
 
@@ -608,8 +617,9 @@ Before submitting the final camera ready copy, remember to:
  uses only Type 1 fonts and that every step in the generation
  process uses the appropriate paper size.
 
-[2 <./figures/noisevis_groundtruth.png> <./figures/noisevis_computed.png>]
-(./paper.aux)
+[3
+
+] (./paper.aux)
 
 LaTeX Warning: There were undefined references.
 
@@ -617,7 +627,7 @@ LaTeX Warning: There were undefined references.
 Here is how much of TeX's memory you used:
  6015 strings out of 494847
  93196 string characters out of 6179081
- 160718 words of memory out of 5000000
+ 161718 words of memory out of 5000000
  9262 multiletter control sequences out of 15000+600000
  36891 words of font info for 72 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
@@ -636,10 +646,10 @@ usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texli
 ve/texmf-dist/fonts/type1/urw/times/utmbi8a.pfb></usr/share/texlive/texmf-dist/
 fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw
 /times/utmri8a.pfb>
-Output written on paper.pdf (2 pages, 1613525 bytes).
+Output written on paper.pdf (3 pages, 1614842 bytes).
 PDF statistics:
- 70 PDF objects out of 1000 (max. 8388607)
- 49 compressed objects within 1 object stream
+ 73 PDF objects out of 1000 (max. 8388607)
+ 51 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 500000)
  11 words of extra memory for PDF output out of 10000 (max. 10000000)
 
