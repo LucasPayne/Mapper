@@ -140,12 +140,62 @@ struct Scene : public IBehaviour {
 
     Image<float> difference_image;
     GLuint difference_texture;
+    
+    float timer; //depth map shader timer
 
     // Cost function parameters
     float lambda;
+    float theta;
+
     float diff(vec4 a, vec4 b) {
         return max(fabs(a.x() - b.x()), max(fabs(a.y() - b.y()), fabs(a.z() - b.z())));
     }
+
+    void iterate() {
+        auto &depth = ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map;
+
+        // Minimize reprojection error.
+        for (int i = 0; i < 480; i++) {
+            for (int j = 0; j < 640; j++) {
+
+                float u = (j+0.5f)*1.f/(depth.width()-1);
+                float v = (i+0.5f)*1.f/(depth.height()-1);
+                float z0 = depth(i, j);
+                vec4 color = frame_metadata[frame_A].rgb_image(i, j);
+
+                float c1 = 0.5 / (2*theta);
+
+                auto f = [&](float z) {
+                    vec3 r = reproject(frame_metadata[frame_A], frame_metadata[frame_B], vec3(u, v, z));
+                    int r_i = int(r.y() * (reprojection_image.height()-1));
+                    int r_j = int(r.x() * (reprojection_image.width()-1));
+                    if (r_i < 0 || r_j < 0 || r_i > reprojection_image.height()-1 || r_j > reprojection_image.width()-1) {
+                        return INFINITY;
+                    }
+                    vec4 reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
+                    float penalty = c1*(z - z0)*(z - z0);
+                    return lambda * diff(reproj_color, color);
+                    // return lambda * diff(reproj_color, color) + penalty;
+                };
+                //--brute force
+                float min_f = INFINITY;
+                float min_z = INFINITY;
+                int N = 100;
+                float d0 = 0.f;
+                float d1 = 10.f;
+                for (int K = 0; K <= N; K++) {
+                    float z = d0 + (d1 - d0)*K*1.f/(N-1);
+                    float fz = f(z);
+                    if (fz < min_f) {
+                        min_f = fz;
+                        min_z = z;
+                    }
+                }
+                computed_depth_map(i, j) = min_z != INFINITY ? min_z : 0.f;
+            }
+        }
+    }
+
     float cost() {
         // Evaluate the cost function.
         int width = 640;
@@ -202,19 +252,15 @@ struct Scene : public IBehaviour {
     }
 
     Scene() {
-        lambda = 2000.f;
+        lambda = 1000.f;
+        theta = 0.00025f;
         ground_truth = true;
 
+        timer = 0.f;
         computed_depth_map_texture = 0;
         computed_depth_map = Image<float>(480, 640); //---hardcoded size
         computed_depth_map_scratch = Image<float>(480, 640); // processing buffer
-        computed_depth_map.clear(1.f);
-        for (int i = 0; i < computed_depth_map.height(); i++) {
-            for (int j = 0; j < computed_depth_map.width(); j++) {
-                // computed_depth_map(i, j) = 3.f + sin(i/200.f) + cos(j/250.f);
-                computed_depth_map(i, j) = 20;
-            }
-        }
+        computed_depth_map.clear(2);
         reprojection_texture = 0;
         reprojection_image = Image<vec4>(480, 640);
         reprojection_image.clear(vec4(1,0,1,1));
@@ -258,9 +304,9 @@ struct Scene : public IBehaviour {
                 frame_B -= 1;
                 if (frame_B < 0) frame_B = frame_metadata.size()-1;
             }
-            if (e.key.code == KEY_V) {
-                view_depth = !view_depth;
-            }
+            // if (e.key.code == KEY_V) {
+            //     view_depth = !view_depth;
+            // }
             if (e.key.code == KEY_O) {
                 frame_A = frame_B;
             }
@@ -272,6 +318,15 @@ struct Scene : public IBehaviour {
             }
             if (e.key.code == KEY_G) {
                 ground_truth = !ground_truth;
+            }
+            if (e.key.code == KEY_V) {
+                iterate();
+            }
+            if (e.key.code == KEY_C) {
+                computed_depth_map.clear(2);
+            }
+            if (e.key.code == KEY_T) {
+                timer = 0.f;
             }
             if (e.key.code == KEY_Y) {
                 // introduce artificial noise
@@ -348,6 +403,7 @@ struct Scene : public IBehaviour {
 
         // std::cout << program.uniform_location("center") << "\n"; getchar();
         glUniform1i(program.uniform_location("N"), 1000); //tessellation
+        glUniform1f(program.uniform_location("time"), timer);
         glUniform3fv(program.uniform_location("center"), 1, (const GLfloat *) &md.world_position);
         glUniformMatrix3fv(program.uniform_location("rotation"), 1, GL_FALSE, (const GLfloat *) &md.rotation);
         glUniform1i(program.uniform_location("pixels_x"), intrinsics.pixels_x);
@@ -369,7 +425,7 @@ struct Scene : public IBehaviour {
     }
 
     void update() {
-        
+        timer += dt;
         auto &paint = world->graphics.paint;
 
         std::vector<vec3> positions;
@@ -418,6 +474,8 @@ struct Scene : public IBehaviour {
 
         compute_reprojection(ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map);
         update_computed_depth_map();
+
+        #if 0
         paint.sprite(frame_metadata[frame_A].rgb_tex, vec2(0,0.2), 0.2, -0.2);
         paint.sprite(frame_metadata[frame_B].rgb_tex, vec2(0.2,0.2), 0.2, -0.2);
         if (ground_truth) {
@@ -428,6 +486,11 @@ struct Scene : public IBehaviour {
         }
         paint.sprite(reprojection_texture, vec2(0.8,0.2), 0.2, -0.2);
         paint.depth_sprite(difference_texture, vec2(0.6,0.2), 0.2, -0.2);
+        #else 
+        paint.sprite(reprojection_texture, vec2(0,0.4), 0.5, -0.4);
+        paint.depth_sprite(difference_texture, vec2(0.5,0.4), 0.5, -0.4);
+        paint.depth_sprite(ground_truth ? frame_metadata[frame_A].depth_tex : computed_depth_map_texture, vec2(0,0.8), 0.5, -0.4);
+        #endif
 
 
         printf("Cost: %.6f\n", cost());
@@ -438,7 +501,7 @@ struct Scene : public IBehaviour {
         if (draw_depth_maps) {
             if (ground_truth) {
                 draw_depth_map(frame_A, 0, (2<<16)/5000.f);
-                draw_depth_map(frame_B, 0, (2<<16)/5000.f);
+                // draw_depth_map(frame_B, 0, (2<<16)/5000.f);
             } else {
                 draw_depth_map(frame_A, computed_depth_map_texture,(2<<16)/5000.f);
             }
