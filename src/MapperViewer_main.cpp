@@ -139,15 +139,12 @@ struct Scene : public IBehaviour {
     GLuint reprojection_texture;
 
     void update_computed_depth_map() {
-        glDeleteTextures(1, &computed_depth_map_texture);
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
                 computed_depth_map_scratch(i, j) = computed_depth_map(i, j) * (5000.f/(2<<16));
             }
         }
         computed_depth_map_texture = computed_depth_map_scratch.texture();
-
-        glDeleteTextures(1, &reprojection_texture);
         reprojection_texture = reprojection_image.texture();
     }
 
@@ -155,8 +152,8 @@ struct Scene : public IBehaviour {
         ground_truth = true;
 
         computed_depth_map_texture = 0;
-        computed_depth_map = Image<float>(640, 480); //---hardcoded size
-        computed_depth_map_scratch = Image<float>(640, 480); // processing buffer
+        computed_depth_map = Image<float>(480, 640); //---hardcoded size
+        computed_depth_map_scratch = Image<float>(480, 640); // processing buffer
         computed_depth_map.clear(1.f);
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
@@ -164,7 +161,9 @@ struct Scene : public IBehaviour {
                 computed_depth_map(i, j) = 5+3*frand();
             }
         }
-        reprojection_image = Image<vec4>(640, 480);
+        reprojection_texture = 0;
+        reprojection_image = Image<vec4>(480, 640);
+        reprojection_image.clear(vec4(1,0,1,1));
         update_computed_depth_map();
 
         frame_A = 0;
@@ -196,17 +195,17 @@ struct Scene : public IBehaviour {
     void keyboard_handler(KeyboardEvent e) {
         if (e.action == KEYBOARD_PRESS) {
             if (e.key.code == KEY_M) {
-                frame_A = (frame_A + 1) % frame_metadata.size();
+                frame_B = (frame_B + 1) % frame_metadata.size();
             }
             if (e.key.code == KEY_N) {
-                frame_A -= 1;
-                if (frame_A < 0) frame_A = frame_metadata.size()-1;
+                frame_B -= 1;
+                if (frame_B < 0) frame_B = frame_metadata.size()-1;
             }
             if (e.key.code == KEY_V) {
                 view_depth = !view_depth;
             }
-            if (e.key.code == KEY_O) { // select frame B
-                frame_B = frame_A;
+            if (e.key.code == KEY_O) {
+                frame_A = frame_B;
             }
             if (e.key.code == KEY_P) {
                 draw_point_clouds = !draw_point_clouds;
@@ -239,22 +238,33 @@ struct Scene : public IBehaviour {
         }
     }
 
-    void compute_reprojection() {
-        for (int i = 0; i < computed_depth_map.height(); i++) {
-            for (int j = 0; j < computed_depth_map.width(); j++) {
-                float u = (i+0.5f)*1.f/(computed_depth_map.height()-1);
-                float v = (j+0.5f)*1.f/(computed_depth_map.width()-1);
-                float Z = computed_depth_map(i, j);
-                vec3 uvz_b = reproject(frame_metadata[frame_A], frame_metadata[frame_B], vec3(v, u, Z));
+    void compute_reprojection(Image<float> &depth) {
+        for (int i = 0; i < depth.height(); i++) {
+            for (int j = 0; j < depth.width(); j++) {
+                float u = (j+0.5f)*1.f/(depth.width()-1);
+                float v = (i+0.5f)*1.f/(depth.height()-1);
+                float Z = depth(i, j);
+                vec3 uvz_b = reproject(frame_metadata[frame_A], frame_metadata[frame_B], vec3(u, v, Z));
+                // vec3 p = frame_to_world(frame_metadata[frame_A], vec3(u,v,Z));
+                // world->graphics.paint.sphere(p, 0.02, vec4(1,0,1,1));
+                // vec3 uvz_b = world_to_frame(frame_metadata[frame_B], p);
+                
                 // vec4 reproj_color = frame_metadata[frame_B].rgb_image.bilinear(uvz_b.x(), uvz_b.y());
-                
-                int r_i = int(uvz_b.x() * (reprojection_image.height()-1));
-                int r_j = int(uvz_b.y() * (reprojection_image.width()-1));
-                vec4 reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
-                
+                int r_i = int(uvz_b.y() * (reprojection_image.height()-1));
+                int r_j = int(uvz_b.x() * (reprojection_image.width()-1));
+                vec4 reproj_color;
+                if (r_i < 0 || r_j < 0 || r_i > reprojection_image.height()-1 || r_j > reprojection_image.width()-1) {
+                    reproj_color = vec4(0,0,0,1);
+                } else {
+                    reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
+                }
                 reprojection_image(i, j) = reproj_color;
+                // reprojection_image(i, j) = frame_metadata[frame_A].rgb_image(i, j);
             }
         }
+        // for (int i = 0; i < reprojection_image.height(); i++)
+        //     for (int j = 0; j < reprojection_image.width(); j++)
+        //         reprojection_image(i, j) = frame_metadata[frame_A].rgb_image(i, j);
     }
 
     void draw_depth_map(int frame_index, int use_depth_texture=0, float depth_scale=1.f) {
@@ -300,15 +310,16 @@ struct Scene : public IBehaviour {
         auto &paint = world->graphics.paint;
 
         std::vector<vec3> positions;
-        for (auto md : frame_metadata) {
+        for (int i = 0; i < frame_metadata.size(); i++) {
+            auto &md = frame_metadata[i];
             positions.push_back(md.world_position);
-            paint.sphere(md.world_position, 0.02, vec4(1,0,0,1));
+            paint.sphere(md.world_position, 0.02, (i==frame_A || i==frame_B) ? vec4(1,1,1,1) : vec4(1,0,0,1));
         }
-        paint.chain(positions, 10, vec4(0,0,0,1));
+        paint.chain(positions, 1, vec4(0,0,0,1));
 
         #if 1
         int frustum_frame_indices[2] = {frame_A, frame_B};
-        vec4 frustum_colors[2] = {vec4(1,0,0,1), vec4(0,0,1,1)};
+        vec4 frustum_colors[2] = {vec4(0,0,0,1), vec4(1,1,1,1)};
         for (int i = 0; i < 2; i++) {
             auto md = frame_metadata[frustum_frame_indices[i]];
             vec3 up = md.rotation * vec3(0,1,0);
@@ -329,20 +340,21 @@ struct Scene : public IBehaviour {
             p = intrinsic_point(0,0,Z);
             q = md.rotation * p;
             vec4 color = frustum_colors[i];
-            paint.line(md.world_position, md.world_position + q, 5, color);
+            paint.line(md.world_position, md.world_position + q, 2, color);
             p = intrinsic_point(1,0,Z);
             q = md.rotation * p;
-            paint.line(md.world_position, md.world_position + q, 5, color);
+            paint.line(md.world_position, md.world_position + q, 2, color);
             p = intrinsic_point(1,1,Z);
             q = md.rotation * p;
-            paint.line(md.world_position, md.world_position + q, 5, color);
+            paint.line(md.world_position, md.world_position + q, 2, color);
             p = intrinsic_point(0,1,Z);
             q = md.rotation * p;
-            paint.line(md.world_position, md.world_position + q, 5, color);
+            paint.line(md.world_position, md.world_position + q, 2, color);
         }
         if (!ground_truth && draw_point_clouds) draw_point_cloud_frame(frame_A, 100, 100, &computed_depth_map);
 
-        compute_reprojection();
+        compute_reprojection(frame_metadata[frame_A].depth_image);
+        update_computed_depth_map();
         paint.sprite(frame_metadata[frame_A].rgb_tex, vec2(0,0.2), 0.2, -0.2);
         paint.sprite(frame_metadata[frame_B].rgb_tex, vec2(0.2,0.2), 0.2, -0.2);
         if (ground_truth) {
@@ -351,9 +363,7 @@ struct Scene : public IBehaviour {
         } else {
             paint.depth_sprite(computed_depth_map_texture, vec2(0,0.4), 0.2, -0.2);
         }
-        if (!ground_truth) {
-            paint.sprite(reprojection_texture, vec2(0.2,0.4), 0.2, -0.2);
-        }
+        paint.sprite(reprojection_texture, vec2(0.8,0.2), 0.2, -0.2);
 
         #endif
     }
