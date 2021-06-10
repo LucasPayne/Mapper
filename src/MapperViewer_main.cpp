@@ -176,16 +176,18 @@ struct Scene : public IBehaviour {
                     vec4 reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
                     float penalty = c1*(z - z0)*(z - z0);
                     // return lambda * diff(reproj_color, color);
+                    // return lambda * diff(reproj_color, color) + penalty;
                     return lambda * diff(reproj_color, color) + penalty;
                 };
                 //--brute force
                 float min_f = INFINITY;
                 float min_z = INFINITY;
-                int N = 100;
+                int N = 250;
                 float d0 = 0.f;
                 float d1 = 10.f;
+                float inv_N_minus_one = 1.f/(N-1);
                 for (int K = 0; K <= N; K++) {
-                    float z = d0 + (d1 - d0)*K*1.f/(N-1);
+                    float z = d0 + (d1 - d0)*K*inv_N_minus_one;
                     float fz = f(z);
                     if (fz < min_f) {
                         min_f = fz;
@@ -196,8 +198,8 @@ struct Scene : public IBehaviour {
             }
         }
 
+        #if 1
         float tau = 0.05;
-
         auto &p0 = computed_depth_map_scratch;
         auto &p1 = computed_depth_map_scratch_2;
         // Regularize.
@@ -205,11 +207,11 @@ struct Scene : public IBehaviour {
         float inv_theta = 1.f/theta;
         // divergence
         auto div = [&](int i, int j) {
-	    return 0.5*480*(p0(i+1,j)-p0(i-1,j)) + 0.5*640*(p1(i,j+1)-p1(i,j+1));
+	    return 0.5*480*(p0(i+1,j)-p0(i-1,j)) + 0.5*640*(p1(i,j+1)-p1(i,j-1));
         };
+        p0.clear(0.f);
+        p1.clear(0.f);
         for (int K = 0; K < num_iterations; K++) {
-            p0.clear(0.f);
-            p1.clear(0.f);
             for (int i = 2; i < 480-2; i++) {
                 for (int j = 2; j < 640-2; j++) {
                     float dy = 0.5*480*((div(i+1,j+0)-depth(i+1,j)*inv_theta - (div(i-1,j+0)-depth(i-1,j)*inv_theta)));
@@ -227,13 +229,14 @@ struct Scene : public IBehaviour {
 
                 }
             }
-            for (int i = 2; i < 480-2; i++) {
-                for (int j = 2; j < 640-2; j++) {
-                    float divp = div(i, j);
-                    depth(i, j) = depth(i, j) - theta*divp;
-                }
-            }
         }
+        for (int i = 2; i < 480-2; i++) {
+	    for (int j = 2; j < 640-2; j++) {
+	        float divp = div(i, j);
+	        depth(i, j) = depth(i, j) - theta*divp;
+	    }
+        }
+        #endif
     }
 
     float cost() {
@@ -264,6 +267,7 @@ struct Scene : public IBehaviour {
         if (num_valid_pixels != 0) total *= (width * height) * 1.f/num_valid_pixels;
         else total = 10000000; //---...
         
+        float regularizer_total = 0.f;
         // Total-variation regularizer integral.
         auto &depth = ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map;
         float dx = 1.f / width;
@@ -274,10 +278,12 @@ struct Scene : public IBehaviour {
                 float ddx = 0.5 * width * (depth(i, j+1) - depth(i, j-1));
                 float ddy = 0.5 * height * (depth(i+1, j) - depth(i-1, j));
                 float grad_norm = sqrt(ddx*ddx + ddy*ddy);
-                total += weight * grad_norm;
+                regularizer_total += weight * grad_norm;
             }
         }
-        return total;
+        std::cout << "data: " << total << "\n";
+        std::cout << "regularizer: " << regularizer_total << "\n";
+        return total + regularizer_total;
     }
 
     void update_computed_depth_map() {
@@ -293,7 +299,7 @@ struct Scene : public IBehaviour {
 
     Scene() {
         lambda = 2000.f;
-        theta = 0.00025f;
+        theta = 1;
         ground_truth = true;
 
         timer = 0.f;
@@ -362,6 +368,7 @@ struct Scene : public IBehaviour {
             }
             if (e.key.code == KEY_V) {
                 iterate();
+                theta *= 0.45;
             }
             if (e.key.code == KEY_C) {
                 computed_depth_map.clear(2);
@@ -516,12 +523,12 @@ struct Scene : public IBehaviour {
         compute_reprojection(ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map);
         update_computed_depth_map();
 
-        #if 0
+        #if 1
         paint.sprite(frame_metadata[frame_A].rgb_tex, vec2(0,0.2), 0.2, -0.2);
         paint.sprite(frame_metadata[frame_B].rgb_tex, vec2(0.2,0.2), 0.2, -0.2);
         if (ground_truth) {
             paint.depth_sprite(frame_metadata[frame_A].depth_tex, vec2(0,0.4), 0.2, -0.2);
-            paint.depth_sprite(frame_metadata[frame_B].depth_tex, vec2(0.2,0.4), 0.2, -0.2);
+            // paint.depth_sprite(frame_metadata[frame_B].depth_tex, vec2(0.2,0.4), 0.2, -0.2);
         } else {
             paint.depth_sprite(computed_depth_map_texture, vec2(0,0.4), 0.2, -0.2);
         }
@@ -596,6 +603,7 @@ App::App(World &_world) : world{_world}
     assert(file != NULL);
     char line[1024];
     int skip_counter = 0;
+    // int get_nth_image = 36;
     int get_nth_image = 36;
     while (fgets(line, 1024, file)) {
         bool skip = skip_counter != 0;
