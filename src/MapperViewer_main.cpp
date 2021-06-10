@@ -40,6 +40,7 @@ struct FrameMetadata {
     std::string rgb_file;
     GLuint rgb_tex;
     GLuint depth_tex;
+    GLuint depth_distance_tex;
     Image<vec4> rgb_image;
     Image<float> depth_image;
 
@@ -127,7 +128,6 @@ struct Scene : public IBehaviour {
     GLuint depth_map_dummy_vao;
     GLuint depth_map_dummy_vbo;
 
-
     bool ground_truth;
     bool draw_point_clouds;
     bool draw_depth_maps;
@@ -138,6 +138,58 @@ struct Scene : public IBehaviour {
     Image<vec4> reprojection_image;
     GLuint reprojection_texture;
 
+    Image<float> difference_image;
+    GLuint difference_texture;
+
+    // Cost function parameters
+    float lambda;
+    float diff(vec4 a, vec4 b) {
+        return max(fabs(a.x() - b.x()), max(fabs(a.y() - b.y()), fabs(a.z() - b.z())));
+    }
+    float cost() {
+        // Evaluate the cost function.
+        int width = 640;
+        int height = 480; //---
+        float weight = 1.f / (width * height);
+        float total = 0.f;
+        int num_valid_pixels = 0;
+        // Reprojected intensity difference integral.
+        // Note: The integration domain is [0,1]^2, so pixel rectangularness is not considered in the integrals.
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                vec4 a = frame_metadata[frame_A].rgb_image(i, j);
+                vec4 b = reprojection_image(i, j);
+                if (b.w() > 1e-5) { // this component is 0 if the reprojection failed.
+                    float d = diff(a, b);
+                    total += lambda * weight * d;
+                    //--------- store in difference image
+                    difference_image(i, j) = d;
+                    num_valid_pixels ++;
+                } else {
+                    difference_image(i, j) = 0;
+                }
+            }
+        }
+        // Rescale so that the integral is over the valid pixels only.
+        if (num_valid_pixels != 0) total *= (width * height) * 1.f/num_valid_pixels;
+        else total = 10000000; //---...
+        
+        // Total-variation regularizer integral.
+        auto &depth = ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map;
+        float dx = 1.f / width;
+        float dy = 1.f / height;
+        // boundary is not included in the integral
+        for (int i = 1; i < height-1; i++) {
+            for (int j = 1; j < width-1; j++) {
+                float ddx = 0.5 * width * (depth(i, j+1) - depth(i, j-1));
+                float ddy = 0.5 * height * (depth(i+1, j) - depth(i-1, j));
+                float grad_norm = sqrt(ddx*ddx + ddy*ddy);
+                total += weight * grad_norm;
+            }
+        }
+        return total;
+    }
+
     void update_computed_depth_map() {
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
@@ -146,9 +198,11 @@ struct Scene : public IBehaviour {
         }
         computed_depth_map_texture = computed_depth_map_scratch.texture();
         reprojection_texture = reprojection_image.texture();
+        difference_texture = difference_image.texture();
     }
 
     Scene() {
+        lambda = 2000.f;
         ground_truth = true;
 
         computed_depth_map_texture = 0;
@@ -158,12 +212,15 @@ struct Scene : public IBehaviour {
         for (int i = 0; i < computed_depth_map.height(); i++) {
             for (int j = 0; j < computed_depth_map.width(); j++) {
                 // computed_depth_map(i, j) = 3.f + sin(i/200.f) + cos(j/250.f);
-                computed_depth_map(i, j) = 5+3*frand();
+                computed_depth_map(i, j) = 20;
             }
         }
         reprojection_texture = 0;
         reprojection_image = Image<vec4>(480, 640);
         reprojection_image.clear(vec4(1,0,1,1));
+
+        difference_texture = 0;
+        difference_image = Image<float>(480, 640);
         update_computed_depth_map();
 
         frame_A = 0;
@@ -216,6 +273,16 @@ struct Scene : public IBehaviour {
             if (e.key.code == KEY_G) {
                 ground_truth = !ground_truth;
             }
+            if (e.key.code == KEY_Y) {
+                // introduce artificial noise
+                for (int i = 0; i < 480; i++) {
+                    for (int j = 0; j < 640; j++) {
+                        float x = 0.2;
+                        frame_metadata[frame_A].depth_image(i, j) += 2*x*(frand()-0.5f);
+                    }
+                }
+		// frame_metadata[frame_A].depth_distance_tex = frame_metadata[frame_A].depth_image.texture();
+            }
         }
     }
 
@@ -245,21 +312,17 @@ struct Scene : public IBehaviour {
                 float v = (i+0.5f)*1.f/(depth.height()-1);
                 float Z = depth(i, j);
                 vec3 uvz_b = reproject(frame_metadata[frame_A], frame_metadata[frame_B], vec3(u, v, Z));
-                // vec3 p = frame_to_world(frame_metadata[frame_A], vec3(u,v,Z));
-                // world->graphics.paint.sphere(p, 0.02, vec4(1,0,1,1));
-                // vec3 uvz_b = world_to_frame(frame_metadata[frame_B], p);
                 
                 // vec4 reproj_color = frame_metadata[frame_B].rgb_image.bilinear(uvz_b.x(), uvz_b.y());
                 int r_i = int(uvz_b.y() * (reprojection_image.height()-1));
                 int r_j = int(uvz_b.x() * (reprojection_image.width()-1));
                 vec4 reproj_color;
                 if (r_i < 0 || r_j < 0 || r_i > reprojection_image.height()-1 || r_j > reprojection_image.width()-1) {
-                    reproj_color = vec4(0,0,0,1);
+                    reproj_color = vec4(0,0,0,0);
                 } else {
                     reproj_color = frame_metadata[frame_B].rgb_image(r_i, r_j);
                 }
                 reprojection_image(i, j) = reproj_color;
-                // reprojection_image(i, j) = frame_metadata[frame_A].rgb_image(i, j);
             }
         }
         // for (int i = 0; i < reprojection_image.height(); i++)
@@ -353,7 +416,7 @@ struct Scene : public IBehaviour {
         }
         if (!ground_truth && draw_point_clouds) draw_point_cloud_frame(frame_A, 100, 100, &computed_depth_map);
 
-        compute_reprojection(frame_metadata[frame_A].depth_image);
+        compute_reprojection(ground_truth ? frame_metadata[frame_A].depth_image : computed_depth_map);
         update_computed_depth_map();
         paint.sprite(frame_metadata[frame_A].rgb_tex, vec2(0,0.2), 0.2, -0.2);
         paint.sprite(frame_metadata[frame_B].rgb_tex, vec2(0.2,0.2), 0.2, -0.2);
@@ -364,6 +427,10 @@ struct Scene : public IBehaviour {
             paint.depth_sprite(computed_depth_map_texture, vec2(0,0.4), 0.2, -0.2);
         }
         paint.sprite(reprojection_texture, vec2(0.8,0.2), 0.2, -0.2);
+        paint.depth_sprite(difference_texture, vec2(0.6,0.2), 0.2, -0.2);
+
+
+        printf("Cost: %.6f\n", cost());
 
         #endif
     }
@@ -425,7 +492,7 @@ App::App(World &_world) : world{_world}
     assert(file != NULL);
     char line[1024];
     int skip_counter = 0;
-    int get_nth_image = 50;
+    int get_nth_image = 36;
     while (fgets(line, 1024, file)) {
         bool skip = skip_counter != 0;
         skip_counter = (skip_counter + 1) % get_nth_image;
@@ -510,7 +577,7 @@ App::App(World &_world) : world{_world}
             assert(!cv_img.empty());
             auto img = depth_to_distance_image(cv_img);
             md.depth_image = img;
-            // md.depth_tex = depth_to_image(cv_img).texture(); // normalized to 0...1
+            md.depth_distance_tex = md.depth_image.texture();
             md.depth_tex = depth_to_image(cv_img).texture(); // normalized to 0...1
         }
     }
