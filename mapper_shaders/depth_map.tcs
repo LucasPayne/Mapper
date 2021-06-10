@@ -1,0 +1,13 @@
+#version 420
+layout (vertices=1) out; //dummy
+uniform int N;
+
+void main(void)
+{
+    gl_TessLevelInner[0] = N;
+    gl_TessLevelInner[1] = N;
+    gl_TessLevelOuter[0] = N;
+    gl_TessLevelOuter[1] = N;
+    gl_TessLevelOuter[2] = N;
+    gl_TessLevelOuter[3] = N;
+}

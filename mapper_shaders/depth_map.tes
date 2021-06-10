@@ -1,0 +1,46 @@
+#version 420
+layout(quads, equal_spacing, ccw) in;
+
+out TES_OUT {
+    vec2 uv;
+} tes_out;
+
+uniform mat4x4 vp_matrix;
+uniform vec3 center;
+uniform int pixels_x;
+uniform int pixels_y;
+uniform float cx;
+uniform float cy;
+uniform float fx;
+uniform float fy;
+uniform mat3x3 rotation;
+uniform sampler2D depth_image;
+uniform float depth_scale; //rescaling if depth is in different coordinates
+uniform float time;
+
+void main(void)
+{
+    const float border = 0.1;
+
+    float u = border + gl_TessCoord.x*(1-2*border);
+    float v = border + gl_TessCoord.y*(1-2*border);
+
+    float Z = texture(depth_image, vec2(u, v)).r; //between 0 and 1
+    Z *= depth_scale;
+    Z *= min(time, 1.25f)/1.25f;
+
+    if (Z < 1e-3) {
+        Z = 1000;
+    }
+    vec3 p = vec3((u*(pixels_x-1) - cx)*Z/fx, (v*(pixels_y-1) - cy)*Z/fy, Z);
+
+    vec3 pos = center + rotation*p;
+    
+
+
+    // vec3 pos = vec3(u*3, v*3, 0);
+
+    tes_out.uv = vec2(u, v);
+    gl_Position = vp_matrix * vec4(pos, 1);
+}
+

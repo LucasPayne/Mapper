@@ -1,0 +1,209 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{caption}
+\usepackage{subcaption}
+
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{Dense depth estimation from image pairs}
+
+\author{\IEEEauthorblockN{Lucas Payne}
+\IEEEauthorblockA{\textit{Department of Computer Science and Software Engineering} \\
+\textit{University of Canterbury}\\
+Christchurch, New Zealand \\
+lcp35@uclive.ac.nz}}
+
+\maketitle
+
+\begin{abstract}
+Abstract
+\end{abstract}
+
+\begin{IEEEkeywords}
+component, formatting, style, styling, insert
+\end{IEEEkeywords}
+
+\section{Introduction}
+...
+
+\section{Dense variational methods}
+Varitional methods
+
+\subsection{Dense optical flow with the Horn-Schunck method}
+A well-known 1981 paper on optical flow estimation by Horn and Schunck \ref{horn_schunck} introduced what is now called the ``Horn-Schunck method'', one of the
+first widespread variational algorithms used by computer vision community.
+To estimate a dense field of motion vectors,
+
+\subsection{Total-variation denoising with the Rudin-Osher-Fatemi (ROF) model}
+The problem of image denoising can be put in a global optimization
+framework. A cost function is formulated that penalizes ``noise'' and rewards closeness to the original (noisy) image. The algorithm then
+consists of minimizing this cost function over all possible candidate ``denoised'' images.
+
+Let $I:[0,1]^2 \rightarrow \mathbb{R}$ be a square grayscale image with continuous domain, and
+$I_{i,j}$ denote the intensity at pixel $(i, j)$ in the sampled discrete image.
+One formulation of the continuous ROF cost function is
+\begin{equation}\label{rof_continuous}
+\begin{split}
+    E(\hat{I}) &= \int_0^1\int_0^1 \frac{1}{2} \left(I(x,y) - \hat{I}(x,y)\right)^2 + \lambda \|\nabla \hat{I}(x,y)\| \,dx \,dy.
+\end{split}
+\end{equation}
+The left-hand term in the integrand is the quadratic data term, penalizing differences from the original noisy image.
+$\|\nabla \hat{I}(x,y)\|$ is a measure of the local variation of intensity at a point in the image.
+
+A common finite difference approximation for $\nabla\hat{I}(x,y)$, valid for non-boundary pixels, is
+\begin{equation}
+    \hat{\nabla}I_{i,j} = \left(\frac{I_{i+1,j} - I_{i-1,j}}{2\Delta x}, \frac{I_{i,j+1} - I_{i,j-1}}{2\Delta y}\right)^T,
+\end{equation}
+where $\Delta x, \Delta y$ are pixel extents in the image domain. Where the original image is discontinuous, such as at edges,
+this finite difference vector can be very large. Furthermore, the set of pixels whose finite-difference stencils extend over discontinuities is
+\textit{not} neglible in the finite approximation of integral \eqref{rof_continuous}. A quadratic regularizer, such as
+$\frac{\lambda}{2} \|\nabla \hat{I}\|^2$ will harshly penalize the appearance of sharp discontinuities, since a large value returned
+by a finite difference is squared. The main idea behind the ROF model is to use the non-squared ``total-variation'' $\lambda \|\nabla \hat{I}\|$.
+While this is notably more difficult to optimize (precluding the use of simple linear least squares), the final effect is a preservation
+of isolated discontinuities such as edges and stripe patterns, while still penalizing large patches of interior noise. Notably, the ROF model can be solved by a non-linear diffusion process, performing gradient descent to solve the Euler-Lagrange
+equations of the cost functional. See their classic paper \ref{rof} for details, and \ref{cremers_rof} for a more recent discussion.
+
+Fundamentally, dense variational methods such as \eqref{horn_schunck}, \eqref{dense_geometry} follow these same lines. First,
+a cost functional of a image with continuous domain is formulated, penalizing unwanted properties of the solution. This cost functional is discretized,
+and the algorithm outputs a discrete function (such as a denoised image, or a depth map, or an optical flow field) which minimizes the discrete cost function.
+The majority of complexity is in the method used to minimize (or attempt to minimize) this cost function, which could be highly non-linear.
+See the TUM lecture series by Cremers \ref{variational_lectures}, freely available online, for more discussion.
+
+
+% Two-dimensional areas of an image with high local variation
+% are considered ``noisy''. Edges cause extremely high local variation --- in fact, an image with continuous domain may not be differentiable. However,
+% finite difference approximations (such as the common ``forward difference''
+% The important contribution of the ROF model
+% is that this regularizer, which penalizes noise, is \textit{not} quadratic. A 
+
+\subsection{Total-variation for dense optical flow estimation}
+\ref{tv_optical_flow}
+$TV-L^1$ data and regularizer terms.
+
+\section{Total variation for depth map estimation from image pairs}
+The paper by Cremer's et. al \ref{dense_geometry} applies insights from the previously mentioned methods (such as
+the thresholding method for total-variation minimization in \ref{tv_optical_flow}) to the problem of dense depth-map
+reconstruction from collections of (grayscale) images. For simplicity, we restrict our attention to the case of two images only ---
+see \ref{dense_geometry} for details on the generalization. We assume (as in \ref{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
+our images are undistorted, and, importantly, that we have accurate camera pose estimations.
+
+\begin{equation}
+\begin{split}
+E(h) &= \lambda \int_{\Omega_0}\left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|
+     + \|\nabla h\| d^2 x.
+\end{split}
+\end{equation}
+
+This equation takes the same form as the above optical flow cost function \ref{tv_optical_flow}. Let $\rho(h) = \left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|$. Since the data term is non-quadratic, we
+cannot apply the ROF optimization method directly. However, we can introduce
+an auxiliary depth map $h^\prime$ to separate the data and regularizer terms,
+and introduce a penalizer for disparity between $h^\prime$ and $h$. The
+new separable cost function is
+\begin{equation}\label{separable_cost}
+    \hat{E}_\theta(h, \hat{h}) = \int_\Omega \lambda \|\rho(h)\| + \frac{1}{2\theta}(h - \hat{h})^2 + \|\nabla \hat{h}\|.
+\end{equation}
+The parameter $\theta$ is set to some small constant.
+
+The cost function $E_\theta$ is separated into functions of $h$ and $h^\prime$,
+and $h$ and $h_\prime$ are alternately optimized in the following way:
+\begin{itemize}
+    \item For $h$ fixed, solve
+        $$\min_{h^\prime} \int_\Omega \lambda \|\nabla h^\prime\| + \frac{1}{2\theta}(h - h^\prime)^2\,dx$$
+    using the ROF optimization methods.
+    \item For $h^\prime$ fixed, solve
+        $$\min_h \int_\Omega \|\rho(h)\| + \frac{1}{2\theta}(h - h^\prime)^2\,dx.$$
+        Since $\rho(h)$ measures point-wise reprojection error, this
+        optimization can be done point-wise.
+\end{itemize}
+% The quadratic term $\frac{1}{2\theta}(h-h^\prime)^2$, for small $\theta$, makes
+% sure that the iteration makes ``small steps''.
+
+
+\section{Visualization and dataset}
+A visual tool for rapidly prototyping new dense reconstruction methods is provided.
+We evaluate our method on the ``freiburg3\_long\_office\_household'' RGBD dataset, which contains accurate ground-truth camera poses, and
+depth maps constructed using a Kinect sensor \ref{dataset} \ref{largescale}. Our tool allows these depth maps to be used as a drop-in replacement for the estimated
+depth maps, to get a rough comparison against the ``ground truth''. Figure (ref figure) shows an example visual inspection of the output
+of our total-variation algorithm.
+
+
+\begin{figure}[htbp]
+\begin{subfigure}[b]{0.5\textwidth}
+\centerline{\includegraphics[width=\textwidth]{figures/noisevis_groundtruth.png}}
+\caption{groundtruth}
+\label{noisevis_groundtruth}
+\end{subfigure}
+\begin{subfigure}[b]{0.5\textwidth}
+\centerline{\includegraphics[width=\textwidth]{figures/noisevis_computed.png}}
+\caption{computed}
+\label{noisevis_computed}
+\end{subfigure}
+\end{figure}
+
+Consider the naive approach of minimizing reprojection error pointwise. For one pixel in frame 1, the depth value parameterizes a ray which
+is then reprojected into frame 2. A simple brute-force approach is to search frame 2, along this reprojected ray, for the color which gives minimum
+reprojection error.
+
+Figures \ref{noisevis_groundtruth} and \ref{noisevis_computed} visualize the problem with this approach.
+Figure \ref{noisevis_groundtruth} displays, using the the ground truth depth map data provided by the Kinect sensor \ref{tum_dataset}, anticlockwise
+from the bottom right:
+\begin{itemize}
+    \item The reprojection image.
+    \item The reprojection error.
+    \item A top-down view of the depth map placed in world space.
+    \item The depth map.
+\end{itemize}
+Figure \ref{noisevis_computed} displays the same results when using a depth map computed with the naive brute-force algorithm outlined above.
+The ground truth reprojection image contains ``coloured shadows'' where the reprojection
+
+
+\section{Comparison of results}
+\section{Possibilities for further work}
+
+\section*{References}
+...
+
+\begin{thebibliography}{00}
+\bibitem{rof}
+    ROF
+\bibitem{cremers_rof}
+    Cremers ROF
+\bibitem{dense_geometry}
+    Cremers, Real-Time Dense Geometry from a Handheld Camera.
+\bibitem{tv_optical_flow}
+    Paper in Pattern recognition book
+\bibitem{dataset}
+    Cremers, dataset
+\bibitem{largescale}
+    Cremers, largescale use of dataset
+\bibitem{horn_schunck}
+    Horn, Schunck.
+\bibitem{volumetric}
+    B. Curless, M. Levoy, A Volumetric Method for Building Complex Models from Range Images. In SIGGRAPH, 1996.
+\bibitem{TUM_volumetric_CPU}
+    F. Steinbr\"ucker, J. St\"urm, D. Cremers, Volumetric 3D Mapping in Real-Time on a CPU. In ICRA, 2014.
+\bibitem{TUM_volumetric_octree}
+    F. Steinbr\"ucker, C. Kerl, J. St\"urm, D. Cremers, Large-Scale Multi-Resolution Surface Reconstruction from RGB-D Sequences. In ICCV, 2013.
+\bibitem{kinectfusion}
+    R. Newcombe et al., KinectFusion: Real-Time Dense Surface Mapping and Tracking. Microsoft Research, 2011.
+\bibitem{tum_dataset}
+    A Benchmark for the Evaluation of RGB-D SLAM Systems (J. Sturm, N. Engelhard, F. Endres, W. Burgard and D. Cremers), In Proc. of the International Conference on Intelligent Robot Systems (IROS), 2012. 
+\bibitem{variational_lectures}
+    variational lecture series
+\end{thebibliography}
+
+\end{document}

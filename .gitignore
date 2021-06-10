@@ -6,8 +6,14 @@
 !src
 !src/CMakeLists.txt
 !src/MapperViewer_main.cpp
+!src/utils
+!src/utils/**/*
+!mapper_shaders
+!mapper_shaders/**/*
 !models
 !/models/**/*
+!paper
+!/paper/**/*
 # submodules
 !lib_cg_sandbox
 !glm
