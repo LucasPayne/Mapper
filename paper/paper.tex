@@ -30,7 +30,18 @@ lcp35@uclive.ac.nz}}
 \maketitle
 
 \begin{abstract}
-Abstract
+We compare variations of the variational method of Cremers for dense
+depth reconstruction from grayscale images. In particular we focus on the case of image pairs.
+The methodology is based on the minimization of a highly non-linear functional, which, given
+a depth map estimate for camera one, measures the reprojection error between the corresponding
+pixels in cameras one and two, assuming brightness constancy ala. the Horn-Schunck algorithm for dense optical flow.
+Important in this method is the use of a total-variation regularizer term, minimized with a method of Chambolle.
+We assume that we have an accurate (and constant) intrinsic camera matrix,
+our images are undistorted, and, importantly, that we have accurate camera pose estimations.
+The main contribution of this paper is a small framework for the visualisation of iterative methods for this problem. We have
+used this framework for the comparison of a simple brute-force method with a more sophisticated regularized scheme.
+---todo: numerical result
+
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -38,14 +49,33 @@ component, formatting, style, styling, insert
 \end{IEEEkeywords}
 
 \section{Introduction}
-...
+In this paper, we compare variations of the variational method of Cremers \cite{dense_geometry} for dense
+depth reconstruction from grayscale images. In particular we focus on the case of image pairs.
+We assume (as in \cite{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
+our images are undistorted, and, importantly, that we have accurate camera pose estimations.
+The methodology is based on the minimization of a highly non-linear functional, which, given
+a depth map estimate for camera one, measures the reprojection error between the corresponding
+pixels in cameras one and two, assuming brightness constancy ala. the Horn-Schunck algorithm \cite{horn_schunck} for dense optical flow.
+Important in this method is the use of a total-variation regularizer term, which penalizes noise in the image.
+We use the method of Chambolle \cite{chambolle} designed for Rudin-Osher-Fatemi \cite{ROF} denoising,
+combined with the splitting scheme of Zach et al. \cite{tv_optical_flow}, which in their paper is applied
+to the problem of dense optical flow.
+
+Following a short presentation of some important variational algorithms, we describe the method of Cremers
+\cite{dense_geometry} and the total-variation optimization of Chambolle \cite{chambolle}.
+Lastly, we present our main contribution: a small framework for the visualisation of iterative methods for the problem of
+dense depth-map estimation from image pairs. We have used this framework for the comparison of a simple brute-force 
+(and ineffective) method with a more sophisticated regularized scheme. ---todo: numerical results, discussion of future work
 
 \section{Dense variational methods}
-Varitional methods
+Here we give a short presentation of early variational methods used in computer vision.
+The methods outlined here serve as the algorithmic lineage of the method of Cremers et. al. \cite{dense_geometry}.
+See the TUM lecture series by Cremers \cite{variational_lectures}, freely available online, for detailed descriptions of the mathematical underpinnings
+and fundamental algorithms.
 
 \subsection{Dense optical flow with the Horn-Schunck method}
-A well-known 1981 paper on optical flow estimation by Horn and Schunck \ref{horn_schunck} introduced what is now called the ``Horn-Schunck method'', one of the
-first widespread variational algorithms used by computer vision community.
+A well-known 1981 paper on optical flow estimation by Horn and Schunck \cite{horn_schunck} introduced what is now called the ``Horn-Schunck method'', one of the
+first widespread variational algorithms used by the computer vision community.
 To estimate a dense field of motion vectors,
 
 \subsection{Total-variation denoising with the Rudin-Osher-Fatemi (ROF) model}
@@ -75,13 +105,12 @@ $\frac{\lambda}{2} \|\nabla \hat{I}\|^2$ will harshly penalize the appearance of
 by a finite difference is squared. The main idea behind the ROF model is to use the non-squared ``total-variation'' $\lambda \|\nabla \hat{I}\|$.
 While this is notably more difficult to optimize (precluding the use of simple linear least squares), the final effect is a preservation
 of isolated discontinuities such as edges and stripe patterns, while still penalizing large patches of interior noise. Notably, the ROF model can be solved by a non-linear diffusion process, performing gradient descent to solve the Euler-Lagrange
-equations of the cost functional. See their classic paper \ref{rof} for details, and \ref{cremers_rof} for a more recent discussion.
+equations of the cost functional. See their classic paper \cite{rof} for details, and \cite{cremers_rof} for a more recent discussion.
 
 Fundamentally, dense variational methods such as \eqref{horn_schunck} and \eqref{dense_geometry} follow these same lines. First,
 a cost functional of a image with continuous domain is formulated, penalizing unwanted properties of the solution. This cost functional is discretized,
 and the algorithm outputs a discrete function (such as a denoised image, or a depth map, or an optical flow field) which minimizes the discrete cost function.
 The majority of the complexity is in the method used to minimize (or attempt to minimize) this cost function, which could be highly non-linear.
-See the TUM lecture series by Cremers \ref{variational_lectures}, freely available online, for more discussion.
 
 
 % Two-dimensional areas of an image with high local variation
@@ -91,18 +120,18 @@ See the TUM lecture series by Cremers \ref{variational_lectures}, freely availab
 % is that this regularizer, which penalizes noise, is \textit{not} quadratic. A 
 
 \subsection{Total-variation for dense optical flow estimation}
-In \ref{tv_optical_flow}, Zach et. al formulate the optical flow problem \ref{optical_flow_reference}
+In \cite{tv_optical_flow}, Zach et. al formulate the optical flow problem \cite{optical_flow_reference}
 as a global optimization with non-quadratic data and regularizer terms. This gives a modification
 of the Horn-Schunck algorithm which is more robust to outliers and which tends to preserve motion discontinuities across object boundaries.
 Zach et. al's main contribution is their method of optimization,
 which we will reproduce in the context of dense depth map estimation.
-See their paper \ref{tv_optical_flow} for full details in the context of dense optical flow estimation.
+See their paper \cite{tv_optical_flow} for full details in the context of dense optical flow estimation.
 
 \section{Total variation for depth map estimation from image pairs}
-The paper by Cremer's et. al \ref{dense_geometry} applies the method of Zach et. al \ref{tv_optical_flow} to
-a to the problem of dense depth-map
+The paper by Cremer's et. al \cite{dense_geometry} applies the method of Zach et. al \cite{tv_optical_flow} to
+the problem of dense depth-map
 reconstruction from collections of (grayscale) images. For simplicity, we restrict our attention to the case of two images only ---
-see \ref{dense_geometry} for details on the generalization. We assume (as in \ref{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
+see \cite{dense_geometry} for details on the generalization. We assume (as in \cite{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
 our images are undistorted, and, importantly, that we have accurate camera pose estimations.
 Our fully non-linear cost function is
 \begin{equation}
@@ -111,7 +140,7 @@ E(h) &= \lambda \int_{\Omega_0}\left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\p
      + \|\nabla h\| d^2 x,
 \end{split}
 \end{equation}
-which has TV-$L^1$ \ref{tv_optical_flow} data and regularizer terms.
+which has TV-$L^1$ \cite{tv_optical_flow} data and regularizer terms.
 (---REDO reprojection notation)
 Let $\rho(h) = \left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|$. Since the data term is non-quadratic, we
 cannot apply the ROF optimization method directly. However, we can introduce
@@ -137,8 +166,8 @@ and $h$ and $h^\prime$ are alternately optimized in the following way:
         Since $\rho(h)$ measures point-wise reprojection error, this
         optimization can be done point-wise.
 \end{itemize}
-The ROF cost function \eqref{minh} can be minimized using the iterative method of Chambolle \ref{chambolle}. For completeness, we reproduce this
-method here in the context of dense depth map estimation. We provide no proofs --- see \ref{chambolle} for full details.
+The ROF cost function \eqref{minh} can be minimized using the iterative method of Chambolle \cite{chambolle}. For completeness, we reproduce this
+method here in the context of dense depth map estimation. We provide no proofs --- see \cite{chambolle} for full details.
 
 
 % The quadratic term $\frac{1}{2\theta}(h-h^\prime)^2$, for small $\theta$, makes
@@ -148,39 +177,40 @@ method here in the context of dense depth map estimation. We provide no proofs -
 \section{Visualization and dataset}
 A visual tool for rapidly prototyping new dense reconstruction methods is provided.
 We evaluate our method on the ``freiburg3\_long\_office\_household'' RGBD dataset, which contains accurate ground-truth camera poses, and
-depth maps constructed using a Kinect sensor \ref{dataset} \ref{largescale}. Our tool allows these depth maps to be used as a drop-in replacement for the estimated
+depth maps constructed using a Kinect sensor \cite{dataset} \cite{largescale}. Our tool allows these depth maps to be used as a drop-in replacement for the estimated
 depth maps, to get a rough comparison against the ``ground truth''. Figure (ref figure) shows an example visual inspection of the output
 of our total-variation algorithm.
 
 \begin{figure}[htbp]
 \begin{subfigure}[b]{0.5\textwidth}
 \centerline{\includegraphics[width=\textwidth]{figures/cloud_groundtruth.png}}
-\caption{groundtruth}
+\caption{Ground truth point cloud from the Kinect sensor}
 \label{cloud_groundtruth}
 \end{subfigure}
 \begin{subfigure}[b]{0.5\textwidth}
 \centerline{\includegraphics[width=\textwidth]{figures/cloud_computed.png}}
-\caption{computed with regularizer}
+\caption{Reconstruction estimate, computed with a regularizer}
 \label{cloud_computed}
 \end{subfigure}
 \end{figure}
 
 
-Figure (fig) displays some preliminary results, using heuristically determined parameters of $\theta$, $\lambda$, and $\tau$, and around 25 iterations.
+Figure \cite{cloud_computed} displays some preliminary results, using heuristically determined parameters of $\theta$, $\lambda$, and $\tau$, and around 25 iterations.
 Clearly this depth map is not satisfactory. However, it has some important qualitative features. Firstly, self-occlusion is captured for the
 orange globe in the reprojection image, which is not captured by the brute-force method. Secondly, the point cloud clusters generally
-toward the real object locations --- note the orange cluster near the globe, and the 
+toward the real object locations --- note the orange cluster near the globe. These results are compared to the ground truth point cloud shown
+in figure \cite{cloud_groundtruth}.
 
 
 \begin{figure}[htbp]
 \begin{subfigure}[b]{0.5\textwidth}
 \centerline{\includegraphics[width=\textwidth]{figures/noisevis_groundtruth.png}}
-\caption{groundtruth}
+\caption{Ground truth depth data}
 \label{noisevis_groundtruth}
 \end{subfigure}
 \begin{subfigure}[b]{0.5\textwidth}
 \centerline{\includegraphics[width=\textwidth]{figures/noisevis_computed.png}}
-\caption{brute-force computed, with no regularizer}
+\caption{Brute-force computed, with no regularizer}
 \label{noisevis_computed}
 \end{subfigure}
 \end{figure}
@@ -188,8 +218,8 @@ toward the real object locations --- note the orange cluster near the globe, and
 Consider the naive approach of minimizing reprojection error pointwise. For one pixel in frame 1, the depth value parameterizes a ray which
 is then reprojected into frame 2. A simple brute-force approach is to search frame 2, along this reprojected ray, for the color which gives minimum
 reprojection error.
-Figures \ref{noisevis_groundtruth} and \ref{noisevis_computed} visualize the problem with this approach.
-Figure \ref{noisevis_groundtruth} displays, using the the ground truth depth map data provided by the Kinect sensor \ref{tum_dataset}, anticlockwise
+Figures \cite{noisevis_groundtruth} and \cite{noisevis_computed} visualize the problem with this approach.
+Figure \cite{noisevis_groundtruth} displays, using the the ground truth depth map data provided by the Kinect sensor \cite{tum_dataset}, anticlockwise
 from the bottom right:
 \begin{itemize}
     \item The reprojection image.
@@ -197,7 +227,7 @@ from the bottom right:
     \item A 3D view of the depth map placed in world space.
     \item The depth map.
 \end{itemize}
-Figure \ref{noisevis_computed} displays the same results when using a depth map computed with the naive brute-force algorithm outlined above.
+Figure \cite{noisevis_computed} displays the same results when using a depth map computed with the naive brute-force algorithm outlined above.
 
 The ground truth reprojection image contains ``coloured shadows'' due to occlusion. These also contribute
 to high (white) values in the reprojection error image. The brute-force depth map avoids this occlusion problem.
@@ -205,15 +235,15 @@ to high (white) values in the reprojection error image. The brute-force depth ma
 Consider a pixel in frame 1 corresponding a point which, from the perspective of camera 2, is behind the blue die.
 Likely, the line search in frame 2 will find
 an unoccluded point, of similar colour, on the table. This, however, gives an unrealistic (and noisy) depth value in general --- compare
-the depth images in figures \ref{noisevis_groundtruth} and \ref{noisevis_computed}. Clearly we would like to favour the depth map in
+the depth images in figures \cite{noisevis_groundtruth} and \cite{noisevis_computed}. Clearly we would like to favour the depth map in
 \eqref{noisevis_groundtruth}, and this is exactly the reason for the (denoising) regularizing term in \eqref{rof_continuous}.
 
-Due to the freedom of the line search, the brute-force method has achieved low reprojection error (bottom right of figure \ref{noisevis_computed}).
+Due to the freedom of the line search, the brute-force method has achieved low reprojection error (bottom right of figure \cite{noisevis_computed}).
 With the ground truth depth map, however, the self-occlusion causes a large amount of reprojection error, which will penalize the cost function
-\eqref{rof_continuous}. We would clearly like to minimize the total reprojection error (with the data term), but also keep the depth map ``smooth'' (with the regularizer term), as achieved in \ref{dense_geometry}.
+\eqref{rof_continuous}. We would clearly like to minimize the total reprojection error (with the data term), but also keep the depth map ``smooth'' (with the regularizer term), as achieved in \cite{dense_geometry}.
 However, it is difficult to choose a good value of $\lambda$ to balance the data and regularizer.
 
-We propose a modification to the method of \ref{dense_geometry}, by removing the 
+We propose a modification to the method of \cite{dense_geometry}, by removing the 
 
 
 
@@ -227,39 +257,56 @@ We propose a modification to the method of \ref{dense_geometry}, by removing the
 \section{Possibilities for further work}
 
 \section*{References}
-...
-
 \begin{thebibliography}{00}
-\bibitem{rof}
-    ROF
+
+% \bibitem{b1} G. Eason, B. Noble, and I. N. Sneddon, ``On certain integrals of Lipschitz-Hankel type involving products of Bessel functions,'' Phil. Trans. Roy. Soc. London, vol. A247, pp. 529--551, April 1955.
+
+
+\bibitem{chambolle}
+    Chambolle, A. (2004). An Algorithm for Total Variation Minimization and Applications.
+    \textit{Journal of Mathematical Imaging and Vision, 20(1/2), 89--97.}
+
+% TUM and Cremers
 \bibitem{cremers_rof}
     Cremers ROF
+
 \bibitem{dense_geometry}
-    Cremers, Real-Time Dense Geometry from a Handheld Camera.
-\bibitem{tv_optical_flow}
-    Paper in Pattern recognition book
-\bibitem{dataset}
-    Cremers, dataset
+Cremers, D., St\"uhmer, J., Gumhold, S., (2010). Real-Time Dense Geometry from a Handheld Camera.
+    \textit{Lecture Notes in Computer Science, 11--20.}
+
+\bibitem{variational_lectures}
+    Cremers, D., Variational Methods in Computer Vision, TUM Department of Infomatics, https://vision.in.tum.de/teaching/online/cvvm (online resource). (Link valid as of June 2021).
 \bibitem{largescale}
-    Cremers, largescale use of dataset
-\bibitem{horn_schunck}
-    Horn, Schunck.
-\bibitem{volumetric}
-    B. Curless, M. Levoy, A Volumetric Method for Building Complex Models from Range Images. In SIGGRAPH, 1996.
+    Cremers, D., Steinbr\"ucker, F., Kerl, C., St\"urm, J., Large-Scale Multi-Resolution Surface Reconstruction from RGB-D Sequences. In ICCV, 2013.
+
 \bibitem{TUM_volumetric_CPU}
-    F. Steinbr\"ucker, J. St\"urm, D. Cremers, Volumetric 3D Mapping in Real-Time on a CPU. In ICRA, 2014.
-\bibitem{TUM_volumetric_octree}
-    F. Steinbr\"ucker, C. Kerl, J. St\"urm, D. Cremers, Large-Scale Multi-Resolution Surface Reconstruction from RGB-D Sequences. In ICCV, 2013.
-\bibitem{kinectfusion}
-    R. Newcombe et al., KinectFusion: Real-Time Dense Surface Mapping and Tracking. Microsoft Research, 2011.
+    Cremers, D., Steinbr\"ucker, F., St\"urm, J., Volumetric 3D Mapping in Real-Time on a CPU. In ICRA, 2014.
+
 \bibitem{tum_dataset}
     A Benchmark for the Evaluation of RGB-D SLAM Systems (J. Sturm, N. Engelhard, F. Endres, W. Burgard and D. Cremers), In Proc. of the International Conference on Intelligent Robot Systems (IROS), 2012. 
-\bibitem{variational_lectures}
-    variational lecture series
-\bibitem{optical_flow_reference}
-    optical flow reference
-\bibitem{chambolle}
-    Chambolle 2004
+
+%----
+\bibitem{rof}
+    Rudin, L. I., Osher, S., \& Fatemi, E. (1992). Nonlinear total variation based noise removal algorithms.
+    \textit{Physica D: Nonlinear Phenomena, 60(1--4), 259--268.}
+
+\bibitem{horn_schunck}
+    Horn, B. K., \& Schunck, B. G. (1981). Determining optical flow.
+    \textit{Artificial Intelligence, 17(1--3), 185--203.}
+
+
+\bibitem{tv_optical_flow}
+Zach, C., Pock, T., Bischof, H. (2007). A Duality Based Approach for Realtime TV--$L^1$ Optical Flow. 
+    \textit{Pattern Recognition: 29th DAGM Symposium, Heidelberg, Germany. Springer. 214-223.}
+
+
+\bibitem{volumetric}
+    B. Curless, M. Levoy, A Volumetric Method for Building Complex Models from Range Images. In SIGGRAPH, 1996.
+
+\bibitem{kinectfusion}
+    R. Newcombe et al., KinectFusion: Real-Time Dense Surface Mapping and Tracking. Microsoft Research, 2011.
+
+
 \end{thebibliography}
 
 \end{document}
