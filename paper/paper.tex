@@ -17,6 +17,7 @@
 \newcommand{\Part}[2]{\frac{\partial #1}{\partial #2}}
 \newcommand{\Partt}[2]{\frac{\partial^2 #1}{\partial {#2}^2}}
 \newcommand{\Partts}[3]{\frac{\partial^2 #1}{\partial {#2} \partial {#3}}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
 
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
@@ -80,7 +81,8 @@ dense depth-map estimation from image pairs. We have used this framework for the
 (and ineffective) method with a more sophisticated regularized scheme. ---todo: numerical results, discussion of future work
 
 \section{Dense variational methods}
-Here we give a short presentation of early variational methods used in computer vision.
+Here we give a short presentation of early variational methods used in computer vision ---
+the Horn-Schunck and Rudin-Osher-Fatemi algorithms --- and a more recent related method of Zach et al. \cite{tv_optical_flow}
 The methods outlined here serve as the algorithmic lineage of the method of Cremers et. al. \cite{dense_geometry}.
 See the TUM lecture series by Cremers \cite{variational_lectures}, freely available online, for detailed descriptions of the mathematical underpinnings
 and fundamental algorithms.
@@ -93,29 +95,46 @@ it computes a \textit{dense} field of motion vectors. The method is usefully for
 Given a stream of grayscale images $I^t : [0,1]^2 \rightarrow \mathbb{R}$, we would like to compute, for each point in the image at time $t$, a (space and time) velocity vector $(u,v,1)$
 which which minimizes the directional derivative
     $$\nabla I^t \cdot(u, v, 1) = \Part{I^t}{x} u + \Part{I^t}{y}v + \Part{I^t}{t}.$$
-This effectively finds the most likely ``motion vector'' which connects this point, as time goes in, to a point
+This effectively finds the most likely ``motion vector'' which connects this point, as time goes on, to a point
 in a subsequent image with the closest intensity value.
 We can then formulate the functional
-\begin{align*}
-    E(u, v) = \int_0^1\int_0^1 \Part{I^t}{x} u(x,y) + \Part{I^t}{y}v(x,y) + \Part{I^t}{t}(x,y) \,dx\,dy,
-\end{align*}
+\begin{equation}
+    E(u, v) = \int_0^1\int_0^1\left(\Part{I^t}{x} u(x,y) + \Part{I^t}{y}v(x,y) + \Part{I^t}{t}(x,y)\right)^2 \,dx\,dy,
+\end{equation}
 and our algorithm is simply the optimization problem
 \begin{equation}\label{horn_schunck_unregularized}
     \min_{u,v}E(u, v).
 \end{equation}
 At this point, as in all variational optimization methods,
 the essential conceptual work is done, and the rest of the work is in the choice of optimization strategy,
-and our method of discretization. However, there is a fatal flaw in \eqref{horn_schunck_unregularized} ---
-given 
+and our method of discretization. However, there is a fatal flaw in \eqref{horn_schunck_unregularized}.
+Suppose that the brightness constancy assumption is fully satisfied; that is, we have $\nabla I^t \cdot (u, v, 1) = 0$
+for ground truth motion vector $(u,v,1)$. We immediately see that this is one linear equation in two variables,
+    $$u\Part{I^t}{x} + v\Part{I^t}{y} = -\Part{I^t}{t},$$
+and that for any $u^*,v^*$ such that
+    $$u^*\Part{I^t}{x} + v^*\Part{I^t}{y} = 0,$$
+we have another solution, $(u + u^*, v + v^*)$ (see figure \ref{aperture_problem}). This is called the \textit{aperture problem} \cite{aperture_problem}, and is due to
+the fact that the velocity vector field is estimated locally. The key modification of Horn and Schunck is the addition of a regularizer term which penalizes
+high variation of the motion field, based on the observation that, except on object boundaries and occlusions, motion vector fields should be smooth. Their modified algorithm
+solves the optimization problem
+\begin{equation}\label{horn_schunck_regularized}
+    \min_{u,v}\left\{E(u, v) + R(u,v)\right\},
+\end{equation}
+where $R(u,v)$ is the regularizer term
+    $$\alpha^2\int_0^1\int_0^1\norm{u}^2 + \norm{v}^2\,dx\,dy,$$
+for regularizer parameter $\alpha$ (the higher $\alpha$, the smoother the resulting vector field).
+Quadratic data and regularizer terms are chosen in order to reduce the discretized Euler-Lagrange equations to a system of linear equations solved for
+the global minimizer (see \cite{variational_calculus} and \cite{variational_lectures} for more information on variational calculus).
+A quadratic regularizer, however, disproportionately penalizes discontinuities, such as across real object boundaries. We will
+address this problem below.
 
-
-
-
-
-\subsection{Total-variation denoising with the Rudin-Osher-Fatemi (ROF) model}
+\subsection{The Rudin-Osher-Fatemi (ROF) model for image denoising with total variation}
 The problem of image denoising can be put in a global optimization
-framework. A cost function is formulated that penalizes ``noise'' and rewards closeness to the original (noisy) image. The algorithm then
-consists of minimizing this cost function over all possible candidate ``denoised'' images.
+framework. We care here about the form of the optimization problem, rather than the application, and the ROF model turns out to be exactly
+the same optimization required in the ``regularization step'' in \cite{tv_optical_flow}, \cite{dense_geometry}.
+A cost function is formulated that penalizes ``noise'' and rewards closeness to the original (noisy) image. The algorithm then
+consists of minimizing this cost function over all possible candidate ``denoised'' images. In fact, this algorithm is effectively the same
+as the above Horn-Schunck method, utilizing a slightly different data term, with a more robust regularizer.
 
 Let $I:[0,1]^2 \rightarrow \mathbb{R}$ be a square grayscale image with continuous domain, and
 $I_{i,j}$ denote the intensity at pixel $(i, j)$ in the sampled discrete image.
@@ -139,7 +158,7 @@ $\frac{\lambda}{2} \|\nabla \hat{I}\|^2$ will harshly penalize the appearance of
 by a finite difference is squared. The main idea behind the ROF model is to use the non-squared ``total-variation'' $\lambda \|\nabla \hat{I}\|$.
 While this is notably more difficult to optimize (precluding the use of simple linear least squares), the final effect is a preservation
 of isolated discontinuities such as edges and stripe patterns, while still penalizing large patches of interior noise. Notably, the ROF model can be solved by a non-linear diffusion process, performing gradient descent to solve the Euler-Lagrange
-equations of the cost functional. See their classic paper \cite{rof} for details, and \cite{cremers_rof} for a more recent discussion.
+equations of the cost functional \cite{variational_calculus}. See their classic paper \cite{rof} for details, and \cite{variational_lectures} for a more recent discussion.
 
 Fundamentally, dense variational methods such as \cite{horn_schunck} and \cite{dense_geometry} follow these same lines. First,
 a cost functional of a image with continuous domain is formulated, penalizing unwanted properties of the solution. This cost functional is discretized,
@@ -154,10 +173,11 @@ The majority of the complexity is in the method used to minimize (or attempt to 
 % is that this regularizer, which penalizes noise, is \textit{not} quadratic. A 
 
 \subsection{Total-variation for dense optical flow estimation}
-In \cite{tv_optical_flow}, Zach et al. formulate the optical flow problem (see \cite{szeliski} for an introduction to this topic).
-as a global optimization with non-quadratic data and regularizer terms. This gives a modification
+In \cite{tv_optical_flow}, Zach et al. formulate the optical flow problem
+as a global optimization with non-quadratic data and regularizer terms.
+This gives a modification
 of the Horn-Schunck algorithm which is more robust to outliers and which tends to preserve motion discontinuities across object boundaries.
-Zach et. al's main contribution is their method of optimization,
+Zach et al.'s main contribution is their method of optimization,
 which we will reproduce in the context of dense depth map estimation.
 See their paper \cite{tv_optical_flow} for full details in the context of dense optical flow estimation.
 
@@ -166,16 +186,31 @@ The paper by Cremer's et al. \cite{dense_geometry} applies the method of Zach et
 the problem of dense depth-map
 reconstruction from collections of (grayscale) images. For simplicity, we restrict our attention to the case of two images only ---
 see \cite{dense_geometry} for details on the generalization. We assume (as in \cite{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
-our images are undistorted, and, importantly, that we have accurate camera pose estimations.
+our images are undistorted, and, importantly, that we have accurate camera pose estimations. We describe here a slightly modified version of Cremer's method.
+
+Let $C_1$ and $C_2$ denote the two cameras, $I_1$ and $I_2$ denote the two images, and let $h$ be the estimated depth map for $C_1$.
 Our fully non-linear cost function is
 \begin{equation}
 \begin{split}
-E(h) &= \lambda \int_{\Omega_0}\left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|
-     + \|\nabla h\| d^2 x,
+% E(h) &= \lambda \int_0^1\int_0^1{\Omega_0}\left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|
+%      + \|\nabla h\| \,dx\,dy,
+E(h) &= \lambda \frac{1}{|\Omega^*|}\int_{\Omega^*}\left\|I_2(\text{reproj}(x,y)) - I_1(x,y)\right\|\,dx\,dy \\
+     &+ \int_0^1\int_0^1\|\nabla h\| \,dx\,dy.
 \end{split}
 \end{equation}
-which has TV-$L^1$ \cite{tv_optical_flow} data and regularizer terms.
-(---REDO reprojection notation)
+which has TV-$L^1$ \cite{tv_optical_flow} data and regularizer terms. $\text{reproj}(x,y)$ is where the non-linear complexity is.
+$x$ and $y$ denote image coordinates in $I_1$, and $h$ gives a transformation from these image coordinates to world-space,
+given the camera pose of $C_1$. We can then project this point to the image space of $I_2$. $\Omega^* \subset [0,1]^2$
+is defined as
+\begin{equation}
+    \Omega_0 \coloneqq \left\{(x,y) \in [0,1]^2 \mid \text{reproj}(x,y) \in [0,1]^2\right\}.
+\end{equation}
+Therefore, our data term is weighted over those pixels which have valid reprojections. Without the $1/|\Omega^*|$ factor
+in the data term, our optimization would likely cause $h$ to be a constant function (giving zero regularizer cost), large enough such that
+all reprojections are invalid (giving zero data cost) --- Weighting by $1/|\Omega^*|$ has been effective in our implementation.
+
+
+
 Let $\rho(h) = \left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|$. Since the data term is non-quadratic, we
 cannot apply the ROF optimization method directly. However, we can introduce
 an auxiliary depth map $h^\prime$ to separate the data and regularizer terms,
@@ -243,12 +278,12 @@ in figure \ref{cloud_groundtruth}.
 
 \begin{figure}[htbp]
 \begin{subfigure}[b]{0.5\textwidth}
-\centerline{\includegraphics[width=\textwidth]{figures/noisevis_groundtruth.png}}
+\centerline{\includegraphics[width=\textwidth]{figures/noisevis_groundtruth_text.png}}
 \caption{Ground truth depth data}
 \label{noisevis_groundtruth}
 \end{subfigure}
 \begin{subfigure}[b]{0.5\textwidth}
-\centerline{\includegraphics[width=\textwidth]{figures/noisevis_computed.png}}
+\centerline{\includegraphics[width=\textwidth]{figures/noisevis_computed_text.png}}
 \caption{Brute-force computed, with no regularizer}
 \label{noisevis_computed}
 \end{subfigure}
@@ -360,6 +395,10 @@ Zach, C., Pock, T., Bischof, H. (2007). A Duality Based Approach for Realtime TV
 
 \bibitem{aperture_problem}
     aperture problem
+
+\bibitem{variational_calculus}
+    Gelfand, I. M., \& Fomin, S. V. (2000). Calculus of Variations (Dover Books on Mathematics). Dover Publications.
+
 
 \end{thebibliography}
 
