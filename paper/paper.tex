@@ -188,18 +188,19 @@ reconstruction from collections of (grayscale) images. For simplicity, we restri
 see \cite{dense_geometry} for details on the generalization. We assume (as in \cite{dense_geometry}) that we have an accurate (and constant) intrinsic camera matrix,
 our images are undistorted, and, importantly, that we have accurate camera pose estimations. We describe here a slightly modified version of Cremer's method.
 
+\subsection{The optimization problem}
 Let $C_1$ and $C_2$ denote the two cameras, $I_1$ and $I_2$ denote the two images, and let $h$ be the estimated depth map for $C_1$.
 Our fully non-linear cost function is
-\begin{equation}
+\begin{equation}\label{nonlinear_cost}
 \begin{split}
 % E(h) &= \lambda \int_0^1\int_0^1{\Omega_0}\left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|
 %      + \|\nabla h\| \,dx\,dy,
-E(h) &= \lambda \frac{1}{|\Omega^*|}\int_{\Omega^*}\left\|I_2(\text{reproj}(x,y)) - I_1(x,y)\right\|\,dx\,dy \\
+E(h) &= \frac{\lambda}{|\Omega^*|}\int_{\Omega^*}\left\|I_2(\text{reproj}(x,y)) - I_1(x,y)\right\|\,dx\,dy \\
      &+ \int_0^1\int_0^1\|\nabla h\| \,dx\,dy.
 \end{split}
 \end{equation}
 which has TV-$L^1$ \cite{tv_optical_flow} data and regularizer terms. $\text{reproj}(x,y)$ is where the non-linear complexity is.
-$x$ and $y$ denote image coordinates in $I_1$, and $h$ gives a transformation from these image coordinates to world-space,
+$x$ and $y$ denote image coordinates in $I_1$, and $h$ is used to transform these image coordinates to world-space,
 given the camera pose of $C_1$. We can then project this point to the image space of $I_2$. $\Omega^* \subset [0,1]^2$
 is defined as
 \begin{equation}
@@ -207,17 +208,18 @@ is defined as
 \end{equation}
 Therefore, our data term is weighted over those pixels which have valid reprojections. Without the $1/|\Omega^*|$ factor
 in the data term, our optimization would likely cause $h$ to be a constant function (giving zero regularizer cost), large enough such that
-all reprojections are invalid (giving zero data cost) --- Weighting by $1/|\Omega^*|$ has been effective in our implementation.
+all reprojections are invalid (giving zero data cost) --- In our implementation, weighting by $1/|\Omega^*|$ has been effective at preventing this.
 
-
-
-Let $\rho(h) = \left\|I_1(\pi(\exp(\hat{\eta}_1)X(x,h)) - I_0(\pi(x))\right\|$. Since the data term is non-quadratic, we
+\subsection{Splitting the cost function}
+Let 
+$$\rho(h) = \left\|I_2(\text{reproj}(x,y)) - I_1(x,y)\right\|.$$
+Since the data term is non-quadratic, we
 cannot apply the ROF optimization method directly. However, we can introduce
 an auxiliary depth map $h^\prime$ to separate the data and regularizer terms,
-and introduce a penalizer for disparity between $h^\prime$ and $h$. The
+and introduce a penalizer for disparity between $h^\prime$ and $h$ (the same method as used in \cite{tv_optical_flow} for optical flow). The
 new separable cost function is
 \begin{equation}\label{separable_cost}
-    \hat{E}_\theta(h, \hat{h}) = \int_\Omega \lambda \|\rho(h)\| + \frac{1}{2\theta}(h - \hat{h})^2 + \|\nabla \hat{h}\|.
+    \hat{E}_\theta(h, h^\prime) = \int_\Omega \lambda \|\rho(h)\| + \frac{1}{2\theta}(h - h^\prime)^2 + \|\nabla h^\prime\|.
 \end{equation}
 The parameter $\theta$ is set to some small constant.
 The cost function $E_\theta$ is separated into functions of $h$ and $h^\prime$,
@@ -235,9 +237,20 @@ and $h$ and $h^\prime$ are alternately optimized in the following way:
         Since $\rho(h)$ measures point-wise reprojection error, this
         optimization can be done point-wise.
 \end{itemize}
+
+\subsection{Efficiently solving the ROF step}
 The ROF cost function \eqref{minh} can be minimized using the iterative method of Chambolle \cite{chambolle}. For completeness, we reproduce this
 method here in the context of dense depth map estimation. We provide no proofs --- see \cite{chambolle} for full details.
 
+
+\subsection{Interpretation of the algorithm and its parameters}
+We are left with many parameters: regularizer parameter $\lambda$, thresholding parameter $\theta$, chosen each iteration, and the number of iterations.
+The performance of our method relies heavily on the choices of these values --- the preliminary results seen in figure \ref{cloud_computed}
+were only achieved by manual adjustment. Although, in principle, we aim to globally optimize the original cost function \eqref{nonlinear_cost},
+our final method of optimization can be reinterpreted as a step-based algorithm:
+\begin{itemize}
+    \item
+\end{itemize}
 
 % The quadratic term $\frac{1}{2\theta}(h-h^\prime)^2$, for small $\theta$, makes
 % sure that the iteration makes ``small steps''.
