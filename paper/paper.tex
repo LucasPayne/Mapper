@@ -247,10 +247,18 @@ method here in the context of dense depth map estimation. We provide no proofs -
 We are left with many parameters: regularizer parameter $\lambda$, thresholding parameter $\theta$, chosen each iteration, and the number of iterations.
 The performance of our method relies heavily on the choices of these values --- the preliminary results seen in figure \ref{cloud_computed}
 were only achieved by manual adjustment. Although, in principle, we aim to globally optimize the original cost function \eqref{nonlinear_cost},
-our final method of optimization can be reinterpreted as a step-based algorithm:
-\begin{itemize}
-    \item
-\end{itemize}
+our final method of optimization can be reinterpreted as a step-based algorithm, outlined here:
+\begin{enumerate}
+    \item Choose regularizer parameter $\lambda$.
+    \item Choose an initial value for splitting parameter $\theta$.
+    \item Initialize a depth map (say, to a constant 3 meters).
+    \item For each pixel in camera one, find the point on the ray which reprojects to the closest intensity in camera two.
+          Update the depth map at this pixel to be the distance to that point.
+    \item Regularization (smoothing) step. Solve the ROF model to smooth the noisy depth map.
+    \item Repeat step 4, but additionally penalize changes to the depth map.
+         (e.g., find the point on the ray which minimizes the sum of reprojection error and a quadratic function of the difference to the old depth value).
+    \item Go to step 5, unless sufficiently many iterations have been completed.
+\end{enumerate}
 
 % The quadratic term $\frac{1}{2\theta}(h-h^\prime)^2$, for small $\theta$, makes
 % sure that the iteration makes ``small steps''.
